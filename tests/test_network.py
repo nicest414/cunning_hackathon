@@ -151,6 +151,7 @@ class TestVoteNetwork(unittest.TestCase):
             call_count[0] += 1
             if call_count[0] == 1:
                 return b"THIS IS NOT JSON", ("192.168.1.2", 45678)
+            net._running = False
             raise socket.timeout  # ループ終了
 
         mock_sock.recvfrom.side_effect = controlled_recvfrom
@@ -182,6 +183,7 @@ class TestVoteNetwork(unittest.TestCase):
             call_count[0] += 1
             if call_count[0] == 1:
                 return json.dumps({"vote": 99}).encode(), ("192.168.1.2", 45678)
+            net._running = False
             raise socket.timeout
 
         mock_sock.recvfrom.side_effect = controlled_recvfrom
