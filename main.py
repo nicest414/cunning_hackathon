@@ -1,10 +1,11 @@
 """shadow_answer — 全自動カンニング風ネタアプリ エントリーポイント。"""
 import os
+import signal
 import sys
 from collections import Counter
 
 from dotenv import load_dotenv
-from PyQt6.QtCore import pyqtSignal, QObject
+from PyQt6.QtCore import pyqtSignal, QObject, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from core import ai_client, capture
@@ -84,19 +85,30 @@ def main() -> None:
     )
     listener.start()
 
+    # Ctrl+C (SIGINT) で app.quit() を呼び、Qt イベントループを終了させる
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+    # Qt のイベントループが Python のシグナルハンドラをブロックしないよう
+    # 定期的に制御を Python に戻すタイマーを設置する
+    _sigint_timer = QTimer()
+    _sigint_timer.timeout.connect(lambda: None)
+    _sigint_timer.start(200)
+
     print("shadow_answer 起動完了。")
     print(f"  AI回答   : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
     print(f"  多数決   : Option+1〜4      (Win/Linux: Alt+1〜4)")
     print(f"  緊急謝罪 : Cmd+Shift+Q     (Win/Linux: Ctrl+Shift+Q)")
     print("終了するには Ctrl+C を押してください。")
 
+    exit_code = app.exec()
     try:
-        sys.exit(app.exec())
-    except KeyboardInterrupt:
-        pass
-    finally:
         listener.stop()
+    except Exception:
+        pass
+    try:
         network.stop()
+    except Exception:
+        pass
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

@@ -66,17 +66,33 @@ class TestAiClient(unittest.TestCase):
             self.assertEqual(result, choice)
 
     def test_ask_returns_question_mark_for_unexpected_response(self):
-        """モデルが 1〜4 以外を返すとき '?' に丸める。"""
+        """モデルが想定外の文字列を返すとき '?' に丸める。"""
         mock_client = MagicMock()
         self.ai_client._client = mock_client
 
-        for bad_answer in ("5", "A", "", "正解は2番です", "0"):
+        # "A" は有効な回答扱いなので、"E" や "X" などを代わりにテストする
+        for bad_answer in ("5", "E", "X", "", "正解は2番です", "0"):
             mock_response = MagicMock()
             mock_response.text = bad_answer
             mock_client.models.generate_content.return_value = mock_response
 
             result = self.ai_client.ask(b"fake-png")
             self.assertEqual(result, "?", f"expected '?' for answer={bad_answer!r}")
+
+    # ついでに柔軟なマッピングのテストを追加するとより完璧です
+    def test_ask_maps_letters_to_numbers(self):
+        """A, B, ア, イなどを 1, 2, 3, 4 にマッピングする"""
+        mock_client = MagicMock()
+        self.ai_client._client = mock_client
+
+        cases = {"A": "1", "B": "2", "ア": "1", "ウ": "3"}
+        for letter, expected_number in cases.items():
+            mock_response = MagicMock()
+            mock_response.text = letter
+            mock_client.models.generate_content.return_value = mock_response
+
+            result = self.ai_client.ask(b"fake-png")
+            self.assertEqual(result, expected_number)
 
     def test_ask_passes_correct_model_name(self):
         """generate_content が正しいモデル名で呼ばれる。"""

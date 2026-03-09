@@ -19,7 +19,7 @@ class VoteNetwork:
         self._votes: Counter = Counter()
         self._lock = threading.Lock()
 
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP通信
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(("", BROADCAST_PORT))
