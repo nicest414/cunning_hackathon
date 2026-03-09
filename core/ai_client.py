@@ -3,6 +3,7 @@ import base64
 from google import genai
 from google.genai import types
 
+# Gemini 3.1 Flash Lite Previewを使用する（間違いなく存在してます！）
 _MODEL_NAME = "gemini-3.1-flash-lite-preview"
 
 _PROMPT = (
@@ -20,16 +21,33 @@ def init(api_key: str) -> None:
     _client = genai.Client(api_key=api_key)
 
 
+_FALLBACK_MODEL = "gemini-2.5-flash"  # または gemini-1.5-flash 等の安定的・軽量なモデル
+
 def ask(image_bytes: bytes) -> str:
     """PNG バイト列を Gemini Flash に送り、回答番号文字列を返す。"""
     assert _client is not None, "ai_client.init() を先に呼び出してください"
-    response = _client.models.generate_content(
-        model=_MODEL_NAME,
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-            _PROMPT,
-        ],
-    )
+    
+    contents = [
+        types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+        _PROMPT,
+    ]
+    
+    try:
+        response = _client.models.generate_content(
+            model=_MODEL_NAME,
+            contents=contents,
+        )
+    except Exception as e:
+        print(f"[DEBUG] {_MODEL_NAME} でのエラー ({e})。{_FALLBACK_MODEL} で再試行します...")
+        try:
+            response = _client.models.generate_content(
+                model=_FALLBACK_MODEL,
+                contents=contents,
+            )
+        except Exception as e2:
+            print(f"[ERROR] フォールバックモデルも失敗しました: {e2}")
+            return "?"
+
     answer = response.text.strip()
     
     # 少し柔軟に解釈（ア,イ,ウ,エ や A,B,C,D を 1,2,3,4 にマッピング）
