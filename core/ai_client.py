@@ -31,7 +31,16 @@ def ask(image_bytes: bytes) -> str:
         ],
     )
     answer = response.text.strip()
-    # 安全弁: 1〜4 以外が返ってきた場合は ? に丸める
-    if answer not in {"1", "2", "3", "4"}:
-        return "?"
-    return answer
+    
+    # 少し柔軟に解釈（ア,イ,ウ,エ や A,B,C,D を 1,2,3,4 にマッピング）
+    mapping = {
+        "1": "1", "2": "2", "3": "3", "4": "4",
+        "ア": "1", "イ": "2", "ウ": "3", "エ": "4",
+        "A": "1", "B": "2", "C": "3", "D": "4",
+        "a": "1", "b": "2", "c": "3", "d": "4",
+    }
+    
+    # 安全弁: 想定外が返ってきた場合は ? に丸める
+    if answer in mapping:
+        return mapping[answer]
+    return "?"
