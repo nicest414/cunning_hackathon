@@ -90,8 +90,8 @@ def main() -> None:
     # Qt のイベントループが Python のシグナルハンドラをブロックしないよう
     # 定期的に制御を Python に戻すタイマーを設置する
     _sigint_timer = QTimer()
-    _sigint_timer.start(200)
     _sigint_timer.timeout.connect(lambda: None)
+    _sigint_timer.start(200)
 
     print("shadow_answer 起動完了。")
     print(f"  AI回答   : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
@@ -100,8 +100,14 @@ def main() -> None:
     print("終了するには Ctrl+C を押してください。")
 
     exit_code = app.exec()
-    listener.stop()
-    network.stop()
+    try:
+        listener.stop()
+    except Exception:
+        pass
+    try:
+        network.stop()
+    except Exception:
+        pass
     sys.exit(exit_code)
 
 
