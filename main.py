@@ -46,14 +46,19 @@ def main() -> None:
     # --- シグナル接続 ---
 
     def _do_ai_answer() -> None:
-        """スクリーンキャプチャ → Gemini に問い合わせ (別スレッドで実行済み)。"""
-        try:
-            img = capture.capture_screen()
-            answer = ai_client.ask(img)
-            bridge.answer_ready.emit(answer)
-        except Exception as e:
-            bridge.answer_ready.emit("?")
-            print(f"[AI ERROR] {e}")
+        """スクリーンキャプチャ → Gemini に問い合わせ (別スレッドで実行して UI フリーズを防ぐ)。"""
+        def _task():
+            try:
+                img = capture.capture_screen()
+                answer = ai_client.ask(img)
+                bridge.answer_ready.emit(answer)
+            except Exception as e:
+                bridge.answer_ready.emit("?")
+                print(f"[AI ERROR] {e}")
+
+        import threading
+        t = threading.Thread(target=_task, daemon=True)
+        t.start()
 
     bridge.ai_requested.connect(_do_ai_answer)
     bridge.answer_ready.connect(overlay.show_answer)
