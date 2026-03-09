@@ -13,6 +13,11 @@ class OverlayWindow(QWidget):
         super().__init__()
         self._setup_window()
         self._setup_label()
+        
+        # 2秒後に自動消去するためのタイマーを設定
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self.hide_all)
 
     def _setup_window(self) -> None:
         self.setWindowFlags(
@@ -44,6 +49,7 @@ class OverlayWindow(QWidget):
         """AI 回答 (1〜4 or ?) を表示する。"""
         self._label.setText(answer)
         self.show()
+        self._timer.start(2000)  # 2秒後に自動消去
 
     def show_votes(self, votes: Counter) -> None:
         """多数決集計結果を表示する。票数最多の選択肢を強調。"""
@@ -56,6 +62,7 @@ class OverlayWindow(QWidget):
         self._label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         self._label.setText(summary)
         self.show()
+        self._timer.start(2000)  # 2秒後に自動消去
 
     def hide_all(self) -> None:
         self._label.setText("")
