@@ -37,15 +37,15 @@ def ask(image_bytes: bytes) -> str:
             model=_MODEL_NAME,
             contents=contents,
         )
-    except Exception as e:
-        print(f"[DEBUG] {_MODEL_NAME} でのエラー ({e})。{_FALLBACK_MODEL} で再試行します...")
+    except Exception:
+        # ステルス性重視: 失敗してもログ出力せずフォールバックのみを試みる
         try:
             response = _client.models.generate_content(
                 model=_FALLBACK_MODEL,
                 contents=contents,
             )
-        except Exception as e2:
-            print(f"[ERROR] フォールバックモデルも失敗しました: {e2}")
+        except Exception:
+            # フォールバックも失敗した場合は黙って「?」を返す
             return "?"
 
     answer = response.text.strip()
