@@ -10,12 +10,24 @@ def _build_pynput_stub():
     pynput_mod = types.ModuleType("pynput")
     keyboard_mod = types.ModuleType("pynput.keyboard")
 
+    class _KeyItem:
+        def __init__(self, name):
+            self.name = name
+        
+        def __eq__(self, other):
+            if isinstance(other, type(self)):
+                return self.name == other.name
+            return False
+            
+        def __hash__(self):
+            return hash(self.name)
+
     class _Key:
-        cmd = "cmd"
-        ctrl = "ctrl"
-        shift = "shift"
-        alt = "alt"
-        space = "space"
+        cmd = _KeyItem("cmd")
+        ctrl = _KeyItem("ctrl")
+        shift = _KeyItem("shift")
+        alt = _KeyItem("alt")
+        space = _KeyItem("space")
 
     class _KeyCode:
         def __init__(self, char=None):
