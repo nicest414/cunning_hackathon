@@ -6,7 +6,7 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget
 
 _ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "assets")
-_SORRY_IMAGE = os.path.join(_ASSETS_DIR, "sorry.png")
+_SORRY_IMAGE = os.path.join(_ASSETS_DIR, "gomen.png")
 _AUTO_CLOSE_MS = 5000  # 5秒後に自動で消える
 
 
