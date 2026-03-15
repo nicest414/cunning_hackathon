@@ -52,7 +52,7 @@ UDPブロードキャストを使用したサーバーレス P2P 通信で、同
 ## ディレクトリ構成
 
 ```
-cunnning_hackathon/
+cunning_hackathon/
 ├── main.py                  # アプリ起動・各モジュール初期化
 ├── .env.example             # 環境変数サンプル（Gemini APIキー）
 ├── requirements.txt         # 依存パッケージ一覧
