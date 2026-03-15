@@ -125,12 +125,12 @@ class TestKeyListener(unittest.TestCase):
         on_ai_answer.assert_called_once()
 
     def test_hotkey_panic_fires_callback(self):
-        """Mod+Shift+Q が押されると on_panic が呼ばれる。"""
+        """Mod+Shift+A が押されると on_panic が呼ばれる。"""
         on_panic = MagicMock()
         kl = self._make_listener(on_panic=on_panic)
 
         mod = self.kl_mod._MOD_KEY
-        kl._pressed = {mod, self.Key.shift, self.KeyCode.from_char("q")}
+        kl._pressed = {mod, self.Key.shift, self.KeyCode.from_char("a")}
         kl._check_hotkeys()
 
         import time; time.sleep(0.05)

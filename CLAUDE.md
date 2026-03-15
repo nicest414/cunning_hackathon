@@ -68,7 +68,7 @@ tests/
 |---|---|---|
 | AI回答 | `Cmd+Shift+Space` | `Ctrl+Shift+Space` |
 | 多数決投票 | `Option+1〜4` | `Alt+1〜4` |
-| 緊急謝罪 | `Cmd+Shift+Q` | `Ctrl+Shift+Q` |
+| 緊急謝罪 | `Cmd+Shift+A` | `Ctrl+Shift+A` |
 
 ## 環境変数
 

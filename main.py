@@ -96,7 +96,7 @@ def main() -> None:
     print("カンニングアプリ 起動完了。")
     print(f"  AI回答   : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
     print(f"  多数決   : Option+1〜4      (Win/Linux: Alt+1〜4)")
-    print(f"  緊急謝罪 : Cmd+Shift+Q     (Win/Linux: Ctrl+Shift+Q)")
+    print(f"  緊急謝罪 : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
     print("終了するには Ctrl+C を押してください。")
 
     exit_code = app.exec()
