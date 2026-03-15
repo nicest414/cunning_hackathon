@@ -116,8 +116,8 @@ class KeyListener:
                 threading.Thread(target=self._safe_call, args=(self._on_ai_answer,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + Shift + Q → パニック
-            if self._has(mod, shift, KeyCode.from_char("q")):
+            # Cmd/Ctrl + Shift + A → パニック
+            if self._has(mod, shift, KeyCode.from_char("a")):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_panic,), daemon=True).start()
                 return
