@@ -40,10 +40,6 @@ class VoteNetwork:
         """自分の回答 (1〜4) をブロードキャスト送信する。"""
         payload = json.dumps({"vote": choice}).encode()
         self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
-        # 自分の票も集計に加える
-        with self._lock:
-            self._votes[choice] += 1
-        self._on_update(Counter(self._votes))
 
     def reset(self) -> None:
         with self._lock:
