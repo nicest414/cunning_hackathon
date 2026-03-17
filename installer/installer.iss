@@ -3,6 +3,7 @@ AppName=CunningApp
 AppVersion=1.0.0
 DefaultDirName={autopf}\CunningApp
 DefaultGroupName=CunningApp
+OutputDir=..\dist
 OutputBaseFilename=CunningApp_Setup
 Compression=lzma
 SolidCompression=yes

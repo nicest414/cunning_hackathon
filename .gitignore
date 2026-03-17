@@ -36,3 +36,7 @@ htmlcov/
 
 # デプロイ
 *.dmg
+installer/Output/
+``
+# AI
+settings.local.json
