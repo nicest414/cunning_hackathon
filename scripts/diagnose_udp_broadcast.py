@@ -26,8 +26,6 @@ UDP ブロードキャスト 2台間診断スクリプト
 import argparse
 import json
 import socket
-import struct
-import sys
 import time
 from datetime import datetime
 
@@ -174,7 +172,9 @@ def mode_sender() -> None:
     print("\n--- 送信完了 ---")
     print("Mac 側の --mode receiver 出力を確認してください。")
     print("受け取れたラベルの中に 'iface_broadcast [Wi-Fiアダプタ名]' があれば、")
-    print("そのブロードキャストアドレスを core/network.py の BROADCAST_ADDR に設定すると解決する可能性があります。")
+    print("そのアドレスが有効なブロードキャスト宛先です。")
+    print("core/network.py はデフォルトゲートウェイのブロードキャストアドレスを自動検出します。")
+    print("自動検出結果を確認するには VOTE_DEBUG=1 を設定してアプリを起動してください。")
 
 
 # ---------------------------------------------------------------------------
