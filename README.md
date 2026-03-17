@@ -131,6 +131,53 @@ python main.py
 
 ---
 
+## デプロイ（配布用パッケージのビルド）
+
+開発環境なしで動作するスタンドアロン実行ファイルを生成します。PyInstaller でアプリをバンドルし、macOS では `.dmg`、Windows では `.exe` インストーラーを出力します。
+
+### 前提ツール
+
+| OS | 必要なツール | インストール方法 |
+|---|---|---|
+| macOS | `create-dmg` | `brew install create-dmg` |
+| Windows | Inno Setup 6 | `winget install JRSoftware.InnoSetup` |
+
+### 手順
+
+#### 1. ビルド用依存パッケージのインストール
+
+```bash
+pip install -r requirements-build.txt
+```
+
+#### 2. ビルド実行
+
+```bash
+# macOS → dist/CunningApp.dmg を生成
+python build.py
+
+# Windows → dist/CunningApp_Setup.exe を生成
+python build.py
+```
+
+#### パッケージ化をスキップしてバイナリだけ生成したい場合
+
+```bash
+python build.py --skip-package
+# 成果物: dist/CunningApp/ (実行ファイル込みのディレクトリ)
+```
+
+### 成果物
+
+| OS | ファイル | 説明 |
+|---|---|---|
+| macOS | `dist/CunningApp.dmg` | ドラッグ&ドロップでインストールできる .dmg |
+| Windows | `dist/CunningApp_Setup.exe` | Inno Setup 製インストーラー |
+
+> `.env` ファイル（APIキー）はビルドに含まれません。配布先の環境で別途 `.env` を用意するか、起動時に `GEMINI_API_KEY` 環境変数を設定してください。
+
+---
+
 ## 注意事項
 
 - **Gemini API の無料枠には利用制限があります。** 連打は控えてください。
