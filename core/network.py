@@ -6,7 +6,7 @@ from collections import Counter
 from typing import Callable
 
 BROADCAST_PORT = 45678
-BROADCAST_ADDR = "255.255.255.255"
+BROADCAST_ADDR = "192.168.11.255"
 _BUFFER_SIZE = 1024
 
 

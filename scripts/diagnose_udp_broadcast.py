@@ -205,7 +205,7 @@ def mode_receiver(duration: float) -> None:
             try:
                 payload = json.loads(data.decode())
             except Exception:
-                payload = {"raw": data!r}
+                payload = {"raw": repr(data)}
             seq = payload.get("seq", "?")
             label = payload.get("label", "?")
             received.append((ts, addr, seq, label))
