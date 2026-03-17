@@ -27,6 +27,9 @@ def _get_broadcast_addr() -> str:
         return "255.255.255.255"
 
 
+BROADCAST_ADDR = _get_broadcast_addr()  # モジュールロード時に一度だけ解決
+
+
 class VoteNetwork:
     def __init__(self, on_update: Callable[[Counter], None]) -> None:
         """
@@ -57,9 +60,12 @@ class VoteNetwork:
         self._sock.close()
 
     def send_vote(self, choice: int) -> None:
-        """自分の回答 (1〜4) をブロードキャスト送信する。"""
+        """自分の回答 (1〜4) をブロードキャスト送信し、ローカル集計も更新する。"""
         payload = json.dumps({"vote": choice}).encode()
-        self._sock.sendto(payload, (_get_broadcast_addr(), BROADCAST_PORT))
+        self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
+        with self._lock:
+            self._votes[choice] += 1
+        self._on_update(Counter(self._votes))
 
     def reset(self) -> None:
         with self._lock:
