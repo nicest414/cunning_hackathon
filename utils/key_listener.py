@@ -204,7 +204,7 @@ class KeyListener:
 
             # Cmd/Ctrl + Shift + C → クリップボードAI置換
             # Cmd+C（コピー）と分離することで OS との競合を完全に回避する。
-            # ユーザーが先に Cmd+C でコピーしてから本ホットキーを押す運用。
+            # 選択中のテキストを内部で Cmd/Ctrl+C シミュレーションにより取得する。
             if self._has(mod, shift) and self._has_alpha("c"):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_copy_hijack,), daemon=True).start()

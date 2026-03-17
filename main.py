@@ -120,18 +120,18 @@ def main() -> None:
     def _do_copy_hijack() -> None:
         """Cmd+Shift+C 検知後、選択テキストを AI に送り返答でクリップボードを上書きする。
 
-        AX API でドラッグ選択中のテキストを直接取得する。コピー操作・クリップボードへの
-        アクセス競合が一切ない。AX で取得できない場合はクリップボードにフォールバック。
+        Cmd+C シミュレーション＋クリップボード退避/復元で選択テキストを取得する。
+        subprocess と sleep を含むため、処理全体をバックグラウンドスレッドで実行する。
         """
-        question = get_selected_text()
-        if not question:
-            print("[Clipboard] テキストが選択されていません。テキストを選択してから実行してください。")
-            return
-
-        print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
-        _notifier.notify_accepted()
-
         def _task() -> None:
+            question = get_selected_text()
+            if not question:
+                print("[Clipboard] テキストが選択されていません。テキストを選択してから実行してください。")
+                return
+
+            print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
+            _notifier.notify_accepted()
+
             answer = ai_client.ask_text(question)
             if answer:
                 print(f"[Clipboard] 返答を受信し、クリップボードを置換します。")

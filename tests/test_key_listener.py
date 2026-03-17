@@ -71,11 +71,14 @@ class TestKeyListener(unittest.TestCase):
         sys.modules.pop("pynput", None)
         sys.modules.pop("pynput.keyboard", None)
 
-    def _make_listener(self, on_ai_answer=None, on_vote=None, on_panic=None):
+    def _make_listener(self, on_ai_answer=None, on_vote=None, on_panic=None,
+                       on_copy_hijack=None, on_quit=None):
         return self.kl_mod.KeyListener(
             on_ai_answer=on_ai_answer or MagicMock(),
             on_vote=on_vote or MagicMock(),
             on_panic=on_panic or MagicMock(),
+            on_copy_hijack=on_copy_hijack or MagicMock(),
+            on_quit=on_quit or MagicMock(),
         )
 
     # ------------------------------------------------------------------
@@ -168,6 +171,18 @@ class TestKeyListener(unittest.TestCase):
         kl._check_hotkeys()
 
         self.assertEqual(len(kl._pressed), 0)
+
+    def test_hotkey_copy_hijack_fires_callback(self):
+        """Mod+Shift+C が押されると on_copy_hijack が呼ばれる。"""
+        on_copy_hijack = MagicMock()
+        kl = self._make_listener(on_copy_hijack=on_copy_hijack)
+
+        mod = self.kl_mod._MOD_KEY
+        kl._pressed = {mod, self.Key.shift, self.KeyCode.from_char("c")}
+        kl._check_hotkeys()
+
+        import time; time.sleep(0.05)
+        on_copy_hijack.assert_called_once()
 
     def test_no_callback_when_no_hotkey_matched(self):
         """ホットキーが揃っていない場合、コールバックは呼ばれない。"""
