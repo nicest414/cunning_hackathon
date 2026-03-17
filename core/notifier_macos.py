@@ -59,10 +59,12 @@ _cf.CFSetGetValues.restype  = None
 _cf.CFSetGetValues.argtypes = [c_void_p, ctypes.POINTER(c_void_p)]
 _cf.CFSetGetCount.restype   = c_int
 _cf.CFSetGetCount.argtypes  = [c_void_p]
-_cf.CFArrayGetCount.restype  = c_int
+_cf.CFArrayGetCount.restype  = ctypes.c_long  # CFIndex = c_long on 64-bit macOS
 _cf.CFArrayGetCount.argtypes = [c_void_p]
 _cf.CFArrayGetValueAtIndex.restype  = c_void_p
-_cf.CFArrayGetValueAtIndex.argtypes = [c_void_p, c_int]
+_cf.CFArrayGetValueAtIndex.argtypes = [c_void_p, ctypes.c_long]  # CFIndex = c_long on 64-bit macOS
+_cf.CFRetain.restype  = c_void_p
+_cf.CFRetain.argtypes = [c_void_p]
 _cf.CFRelease.restype  = None
 _cf.CFRelease.argtypes = [c_void_p]
 
@@ -218,6 +220,7 @@ class MacOSLEDNotifier(AbstractKeyboardLEDNotifier):
             # LED Usage Page = 0x08, Caps Lock = 0x02
             if usage_page == 0x08 and usage == _kHIDUsage_LED_CapsLock:
                 result = elem
+                _cf.CFRetain(result)  # 配列解放後もポインタを有効に保つ
                 break
 
         _cf.CFRelease(elements)
@@ -233,6 +236,7 @@ class MacOSLEDNotifier(AbstractKeyboardLEDNotifier):
             if value:
                 _iokit.IOHIDDeviceSetValue(device, elem, value)
                 _cf.CFRelease(value)
+            _cf.CFRelease(elem)  # _find_caps_lock_element でCFRetainした分を解放
 
     def _get_current_caps_state(self) -> bool:
         """Caps Lockの現在の論理状態を取得する。"""
