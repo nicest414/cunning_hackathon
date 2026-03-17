@@ -83,7 +83,7 @@ tests/
 | 操作 | macOS | Windows/Linux |
 |---|---|---|
 | AI回答（スクリーンキャプチャ） | `Cmd+Shift+Space` | `Ctrl+Shift+Space` |
-| クリップボードAI置換 | `Cmd+C` | `Ctrl+C` |
+| クリップボードAI置換 | `Cmd+Shift+C` | `Ctrl+Shift+C` |
 | 多数決投票 | `Option+1〜4` | `Alt+1〜4` |
 | 緊急謝罪 | `Cmd+Shift+A` | `Ctrl+Shift+A` |
 | アプリ終了 | `Cmd+Shift+X` | `Ctrl+Shift+X` |
