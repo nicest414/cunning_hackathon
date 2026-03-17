@@ -61,6 +61,20 @@ class KeyListener:
     def _on_release(self, key) -> None:
         self._pressed.discard(key)
 
+    # macOS ANSI 仮想キーコード（Option 修飾時も変わらない）
+    _MAC_NUM_VK = {1: 18, 2: 19, 3: 20, 4: 21}
+
+    def _has_num(self, n: int) -> bool:
+        """数字キー n が押されているか（macOS の Option 修飾による文字変換を回避）"""
+        for k in self._pressed:
+            # vk ベースで判定（修飾キーによる char 変換を無視できる）
+            if _IS_MAC and hasattr(k, "vk") and k.vk == self._MAC_NUM_VK.get(n):
+                return True
+            # Windows/Linux: char で判定
+            if hasattr(k, "char") and k.char == str(n):
+                return True
+        return False
+
     def _has(self, *keys) -> bool:
         """押下中のキーセットが指定キーをすべて含むか確認する。左右の修飾キーも考慮する。"""
         # 現在押されているキーの名前（文字列）の集合を取得
@@ -130,7 +144,7 @@ class KeyListener:
 
             # Alt/Option + 1〜4 → 多数決
             for i in range(1, 5):
-                if self._has(alt, KeyCode.from_char(str(i))):
+                if self._has(alt) and self._has_num(i):
                     self._pressed.clear()
                     choice = i
                     threading.Thread(
