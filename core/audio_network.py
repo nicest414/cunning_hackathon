@@ -12,6 +12,7 @@
 
 import logging
 import threading
+import time
 from collections import Counter
 from typing import Callable
 
@@ -188,6 +189,10 @@ class AudioVoteNetwork:
             print(f"[AudioVoteNetwork] マイクのオープンに失敗しました: {e}")
             return
 
+        # デバウンス: 1票検出後 DEBOUNCE_SEC 秒間は同じ選択肢を無視する
+        DEBOUNCE_SEC = 0.8
+        last_detected_at: dict[int, float] = {}
+
         chunk_count = 0
         try:
             while self._running:
@@ -202,6 +207,11 @@ class AudioVoteNetwork:
                     logger.debug("_listen: 稼働中 chunk_count=%d", chunk_count)
                 choice = _detect_choice(data)
                 if choice is not None:
+                    now = time.monotonic()
+                    if now - last_detected_at.get(choice, 0.0) < DEBOUNCE_SEC:
+                        logger.debug("_listen: デバウンスで無視 choice=%d", choice)
+                        continue
+                    last_detected_at[choice] = now
                     with self._lock:
                         self._votes[choice] += 1
                     logger.info("_listen: 投票カウント choice=%d votes=%s", choice, dict(self._votes))
