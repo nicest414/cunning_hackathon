@@ -33,7 +33,7 @@ SAMPLE_RATE = 44100
 TONE_DURATION = 0.05       # 送信トーン長（秒）
 CHUNK_SIZE = 4096          # 受信チャンクサイズ（サンプル数）
 FREQ_TOLERANCE = 200       # 周波数判定の許容幅（Hz）
-SNR_THRESHOLD = 10.0       # ノイズフロア比: この倍数を超えた場合のみ検出
+SNR_THRESHOLD = 5.0       # ノイズフロア比: この倍数を超えた場合のみ検出
 
 FREQ_MAP: dict[int, int] = {
     1: 17000,
