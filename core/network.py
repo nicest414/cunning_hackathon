@@ -49,7 +49,10 @@ class VoteNetwork:
     def _listen(self) -> None:
         while self._running:
             try:
-                data, _ = self._sock.recvfrom(_BUFFER_SIZE)
+                data, addr = self._sock.recvfrom(_BUFFER_SIZE)
+                import os, sys
+                if os.environ.get("VOTE_DEBUG"):
+                    print(f"[VoteNetwork] recv from {addr}: {data!r}", file=sys.stderr, flush=True)
                 payload = json.loads(data.decode())
                 choice = int(payload.get("vote", 0))
                 if choice in (1, 2, 3, 4):
