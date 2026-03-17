@@ -9,11 +9,12 @@ from dotenv import load_dotenv
 from PyQt6.QtCore import pyqtSignal, QObject, QTimer
 from PyQt6.QtWidgets import QApplication
 
-from core import ai_client, capture
+from core import ai_client, capture, credentials
 from core.network import VoteNetwork
 from core.stealth_notifier import create_notifier
 from ui.apology_window import ApologyWindow
 from ui.overlay_window import OverlayWindow
+from ui.setup_dialog import SetupDialog
 from utils.key_listener import KeyListener
 
 
@@ -29,19 +30,30 @@ class _Bridge(QObject):
 
 
 def main() -> None:
-    load_dotenv()
+    load_dotenv()  # .env を環境変数に反映（後方互換）
 
-    api_key = os.getenv("GEMINI_API_KEY", "")
+    # APIキー取得: keyring → 環境変数 の優先順位
+    api_key = credentials.get_api_key() or os.getenv("GEMINI_API_KEY", "")
+
+    # QApplication は SetupDialog を表示する前に生成する必要がある
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
     if not api_key:
-        print("[ERROR] GEMINI_API_KEY が設定されていません。.env を確認してください。")
-        sys.exit(1)
+        dialog = SetupDialog()
+        result = dialog.exec()
+        if result != SetupDialog.DialogCode.Accepted:
+            sys.exit(0)
+        # SetupDialog.accept() 内で credentials.set_api_key() が呼ばれているので
+        # ここで再取得する
+        api_key = credentials.get_api_key() or ""
+        if not api_key:
+            # 万が一取得できなかった場合（通常は起こらない）
+            sys.exit(1)
 
     ai_client.init(api_key)
 
     _notifier = create_notifier()
-
-    app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)
 
     overlay = OverlayWindow()
     apology = ApologyWindow()

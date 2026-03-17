@@ -131,6 +131,55 @@ python main.py
 
 ---
 
+## デプロイ（配布用パッケージのビルド）
+
+開発環境なしで動作するスタンドアロン実行ファイルを生成します。PyInstaller でアプリをバンドルし、macOS では `.dmg`、Windows では `.exe` インストーラーを出力します。
+
+### 前提ツール
+
+| OS | 必要なツール | インストール方法 |
+|---|---|---|
+| macOS | `create-dmg` | `brew install create-dmg` |
+| Windows | Inno Setup 6 | `winget install JRSoftware.InnoSetup` |
+
+### 手順
+
+#### 1. ビルド用依存パッケージのインストール
+
+```bash
+pip install -r requirements-build.txt
+```
+
+#### 2. ビルド実行
+
+```bash
+# macOS → dist/CunningApp.dmg を生成
+python build.py
+
+# Windows → dist/CunningApp_Setup.exe を生成
+python build.py
+```
+
+#### パッケージ化をスキップしてバイナリだけ生成したい場合
+
+```bash
+python build.py --skip-package
+# 成果物: dist/CunningApp/ (実行ファイル込みのディレクトリ)
+```
+
+### 成果物
+
+| OS | ファイル | 説明 |
+|---|---|---|
+| macOS | `dist/CunningApp.dmg` | ドラッグ&ドロップでインストールできる .dmg |
+| Windows | `dist/CunningApp_Setup.exe` | Inno Setup 製インストーラー |
+
+> **初回起動時の API キー設定について**
+> `.env` ファイルや `GEMINI_API_KEY` 環境変数が未設定の場合、起動時に API キー入力ダイアログ（SetupDialog）が表示されます。入力されたキーは OS のセキュアストレージ（keyring）に保存されるため、2 回目以降の起動時は入力不要です。
+> 環境変数 `GEMINI_API_KEY` が設定されている場合はダイアログをスキップして直接起動します。
+
+---
+
 ## 注意事項
 
 - **Gemini API の無料枠には利用制限があります。** 連打は控えてください。

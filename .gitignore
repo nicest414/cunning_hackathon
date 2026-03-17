@@ -33,3 +33,10 @@ htmlcov/
 
 # ログ
 *.log
+
+# デプロイ
+*.dmg
+installer/Output/
+``
+# AI
+settings.local.json

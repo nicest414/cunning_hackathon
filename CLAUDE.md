@@ -30,6 +30,22 @@ python -m pytest tests/
 python -m unittest discover tests/
 ```
 
+## ビルド（配布用パッケージ生成）
+
+```bash
+# ビルド環境のセットアップ
+pip install -r requirements-build.txt
+
+# macOS → dist/CunningApp.dmg を生成
+python build.py
+
+# Windows → dist/CunningApp_Setup.exe を生成
+python build.py
+
+# ビルドのみ（パッケージ化をスキップ）
+python build.py --skip-package
+```
+
 ## 技術スタック
 
 - **Python 3.10+**
