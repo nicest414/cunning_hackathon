@@ -1,10 +1,10 @@
 """高周波 Audio FSK を用いたオフライン P2P 多数決モジュール。
 
 選択肢ごとに以下の周波数を使用:
-  1: 18000 Hz
-  2: 18500 Hz
-  3: 19000 Hz
-  4: 19500 Hz
+  1: 17000 Hz
+  2: 17500 Hz
+  3: 18000 Hz
+  4: 18500 Hz
 
 送信: numpy でサイン波を生成し pyaudio でスピーカーから再生。
 受信: pyaudio でマイク入力を常時監視し、FFT でピーク周波数を検出。
@@ -30,15 +30,15 @@ logging.basicConfig(
 )
 
 SAMPLE_RATE = 44100
-TONE_DURATION = 0.3        # 送信トーン長（秒）
+TONE_DURATION = 0.05       # 送信トーン長（秒）
 CHUNK_SIZE = 4096          # 受信チャンクサイズ（サンプル数）
 FREQ_TOLERANCE = 200       # 周波数判定の許容幅（Hz）
 
 FREQ_MAP: dict[int, int] = {
-    1: 18000,
-    2: 18500,
-    3: 19000,
-    4: 19500,
+    1: 17000,
+    2: 17500,
+    3: 18000,
+    4: 18500,
 }
 # 逆引き用（受信側）
 _CHOICE_BY_FREQ = {v: k for k, v in FREQ_MAP.items()}
