@@ -13,7 +13,7 @@ from core import credentials
 def _validate_api_key(key: str) -> bool:
     try:
         client = genai.Client(api_key=key)
-        list(client.models.list())
+        next(iter(client.models.list()))
         return True
     except Exception:
         return False
@@ -32,7 +32,7 @@ class _Validator(QObject):
 
 
 class SetupDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent: QDialog | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Gemini API キーの設定")
         self.setModal(True)
@@ -74,7 +74,7 @@ class SetupDialog(QDialog):
 
         self._pending_key: str = ""
 
-    def _on_toggle_visibility(self):
+    def _on_toggle_visibility(self) -> None:
         if self._key_edit.echoMode() == QLineEdit.EchoMode.Password:
             self._key_edit.setEchoMode(QLineEdit.EchoMode.Normal)
             self._toggle_btn.setText("隠す")
@@ -82,7 +82,7 @@ class SetupDialog(QDialog):
             self._key_edit.setEchoMode(QLineEdit.EchoMode.Password)
             self._toggle_btn.setText("表示")
 
-    def _on_save(self):
+    def _on_save(self) -> None:
         key = self._key_edit.text().strip()
         if not key:
             QMessageBox.warning(self, "入力エラー", "API キーを入力してください。")
@@ -98,13 +98,22 @@ class SetupDialog(QDialog):
         threading.Thread(target=validator.run, daemon=True).start()
         self._validator = validator  # keep reference
 
-    def _on_validate_done(self, ok: bool):
+    def _on_validate_done(self, ok: bool) -> None:
         self._save_btn.setEnabled(True)
         self._cancel_btn.setEnabled(True)
         self._save_btn.setText("保存して起動")
 
         if ok:
-            credentials.set_api_key(self._pending_key)
+            try:
+                credentials.set_api_key(self._pending_key)
+            except Exception as e:
+                self._pending_key = ""
+                QMessageBox.critical(
+                    self,
+                    "保存エラー",
+                    f"API キーの保存に失敗しました。\n{e}",
+                )
+                return
             self.accept()
         else:
             QMessageBox.critical(
@@ -113,5 +122,5 @@ class SetupDialog(QDialog):
                 "API キーが無効か、接続に失敗しました。\nキーを確認してもう一度お試しください。",
             )
 
-    def _on_cancel(self):
+    def _on_cancel(self) -> None:
         self.reject()

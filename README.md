@@ -174,7 +174,9 @@ python build.py --skip-package
 | macOS | `dist/CunningApp.dmg` | ドラッグ&ドロップでインストールできる .dmg |
 | Windows | `dist/CunningApp_Setup.exe` | Inno Setup 製インストーラー |
 
-> `.env` ファイル（APIキー）はビルドに含まれません。配布先の環境で別途 `.env` を用意するか、起動時に `GEMINI_API_KEY` 環境変数を設定してください。
+> **初回起動時の API キー設定について**
+> `.env` ファイルや `GEMINI_API_KEY` 環境変数が未設定の場合、起動時に API キー入力ダイアログ（SetupDialog）が表示されます。入力されたキーは OS のセキュアストレージ（keyring）に保存されるため、2 回目以降の起動時は入力不要です。
+> 環境変数 `GEMINI_API_KEY` が設定されている場合はダイアログをスキップして直接起動します。
 
 ---
 
