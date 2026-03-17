@@ -29,11 +29,13 @@ class KeyListener:
         on_vote: Callable[[int], None],
         on_panic: Callable[[], None],
         on_quit: Callable[[], None] = lambda: None,
+        on_copy_hijack: Callable[[], None] = lambda: None,
     ) -> None:
         self._on_ai_answer = on_ai_answer
         self._on_vote = on_vote
         self._on_panic = on_panic
         self._on_quit = on_quit
+        self._on_copy_hijack = on_copy_hijack
 
         self._pressed: set = set()
         self._listener: keyboard.Listener | None = None
@@ -63,6 +65,23 @@ class KeyListener:
 
     # macOS ANSI 仮想キーコード（Option 修飾時も変わらない）
     _MAC_NUM_VK = {1: 18, 2: 19, 3: 20, 4: 21}
+    # macOS ANSI 仮想キーコード（アルファベット）
+    _MAC_ALPHA_VK = {
+        "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
+        "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
+        "y": 16, "t": 17, "u": 32, "i": 34, "o": 31, "p": 35, "l": 37,
+        "j": 38, "k": 40, "n": 45, "m": 46,
+    }
+
+    def _has_alpha(self, char: str) -> bool:
+        """アルファベットキー char が押されているか（macOS の Cmd 修飾による char=None を回避）"""
+        char = char.lower()
+        for k in self._pressed:
+            if _IS_MAC and hasattr(k, "vk") and k.vk == self._MAC_ALPHA_VK.get(char):
+                return True
+            if hasattr(k, "char") and k.char and k.char.lower() == char:
+                return True
+        return False
 
     def _has_num(self, n: int) -> bool:
         """数字キー n が押されているか（macOS の Option 修飾による文字変換を回避）"""
@@ -131,15 +150,22 @@ class KeyListener:
                 return
 
             # Cmd/Ctrl + Shift + A → パニック
-            if self._has(mod, shift, KeyCode.from_char("a")):
+            if self._has(mod, shift) and self._has_alpha("a"):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_panic,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + C → アプリ終了 (KeyboardInterrupt の代わり)
-            if self._has(mod, KeyCode.from_char("c")):
+            # Cmd/Ctrl + Shift + X → アプリ終了
+            if self._has(mod, shift) and self._has_alpha("x"):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_quit,), daemon=True).start()
+                return
+
+            # Cmd/Ctrl + C (Shift なし) → クリップボードAI置換
+            if self._has(mod) and self._has_alpha("c") and not self._has(shift):
+                self._pressed.clear()  # キーリピートによる多重発火を防ぐ
+                # コピー操作自体はOSに委ねるため、シグナルのみ発火（遅延はmain側で制御）
+                threading.Thread(target=self._safe_call, args=(self._on_copy_hijack,), daemon=True).start()
                 return
 
             # Alt/Option + 1〜4 → 多数決

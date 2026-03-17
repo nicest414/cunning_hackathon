@@ -2,6 +2,7 @@
 import os
 import signal
 import sys
+import threading
 from collections import Counter
 
 from dotenv import load_dotenv
@@ -23,6 +24,8 @@ class _Bridge(QObject):
     panic_requested = pyqtSignal()
     answer_ready = pyqtSignal(str)
     votes_updated = pyqtSignal(object)  # Counter
+    copy_hijack_requested = pyqtSignal()
+    clipboard_replace = pyqtSignal(str)
 
 
 def main() -> None:
@@ -87,11 +90,43 @@ def main() -> None:
 
     bridge.panic_requested.connect(_do_panic)
 
+    def _do_copy_hijack() -> None:
+        """Cmd+C 検知後、クリップボードの変化をポーリングして AI で内容を書き換える。"""
+        prev_text = app.clipboard().text()
+        # 最大500ms（50ms × 10回）ポーリング。重い環境でも追従できるよう余裕を持たせる。
+        remaining = [10]
+        timer = QTimer()
+
+        def _poll() -> None:
+            current_text = app.clipboard().text()
+            if current_text and current_text != prev_text:
+                timer.stop()
+                question = current_text
+
+                def _task() -> None:
+                    answer = ai_client.ask_text(question)
+                    if answer:
+                        bridge.clipboard_replace.emit(answer)
+
+                threading.Thread(target=_task, daemon=True).start()
+            else:
+                remaining[0] -= 1
+                if remaining[0] <= 0:
+                    timer.stop()
+
+        timer.timeout.connect(_poll)
+        timer.start(50)
+
+    bridge.copy_hijack_requested.connect(_do_copy_hijack)
+    bridge.clipboard_replace.connect(app.clipboard().setText)
+
     # --- キーリスナー起動 ---
     listener = KeyListener(
         on_ai_answer=bridge.ai_requested.emit,
         on_vote=bridge.vote_cast.emit,
         on_panic=bridge.panic_requested.emit,
+        on_quit=app.quit,
+        on_copy_hijack=bridge.copy_hijack_requested.emit,
     )
     listener.start()
 
@@ -104,10 +139,11 @@ def main() -> None:
     _sigint_timer.start(200)
 
     print("カンニングアプリ 起動完了。")
-    print(f"  AI回答   : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
-    print(f"  多数決   : Option+1〜4      (Win/Linux: Alt+1〜4)")
-    print(f"  緊急謝罪 : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
-    print("終了するには Ctrl+C を押してください。")
+    print(f"  AI回答           : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
+    print(f"  クリップボード置換: Cmd+C            (Win/Linux: Ctrl+C)")
+    print(f"  多数決           : Option+1〜4      (Win/Linux: Alt+1〜4)")
+    print(f"  緊急謝罪         : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
+    print(f"  終了             : Cmd+Shift+X     (Win/Linux: Ctrl+Shift+X)")
 
     exit_code = app.exec()
     try:
