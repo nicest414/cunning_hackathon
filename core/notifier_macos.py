@@ -38,8 +38,8 @@ except RuntimeError as _e:
 
 _kIOHIDOptionsTypeNone         = 0
 _kIOHIDManagerOptionNone       = 0
-_kHIDPage_KeyboardOrKeypad     = 0x01
-_kHIDUsage_KeyboardKeypadPage  = 0x01  # Usage: Keyboard
+_kHIDPage_GenericDesktop       = 0x01  # HID Generic Desktop Controls usage page
+_kHIDUsage_GD_Keyboard         = 0x06  # Keyboard usage (Generic Desktop page)
 _kHIDUsage_LED_CapsLock        = 0x02  # LED usage: Caps Lock
 
 _kCFRunLoopDefaultMode = None  # 後でCFStringRef取得
@@ -59,6 +59,10 @@ _cf.CFSetGetValues.restype  = None
 _cf.CFSetGetValues.argtypes = [c_void_p, ctypes.POINTER(c_void_p)]
 _cf.CFSetGetCount.restype   = c_int
 _cf.CFSetGetCount.argtypes  = [c_void_p]
+_cf.CFArrayGetCount.restype  = c_int
+_cf.CFArrayGetCount.argtypes = [c_void_p]
+_cf.CFArrayGetValueAtIndex.restype  = c_void_p
+_cf.CFArrayGetValueAtIndex.argtypes = [c_void_p, c_int]
 _cf.CFRelease.restype  = None
 _cf.CFRelease.argtypes = [c_void_p]
 
@@ -170,7 +174,7 @@ class MacOSLEDNotifier(AbstractKeyboardLEDNotifier):
         if not manager:
             raise RuntimeError("IOHIDManagerCreate 失敗")
 
-        matching = _build_matching_dict(_kHIDPage_KeyboardOrKeypad, _kHIDUsage_KeyboardKeypadPage)
+        matching = _build_matching_dict(_kHIDPage_GenericDesktop, _kHIDUsage_GD_Keyboard)
         _iokit.IOHIDManagerSetDeviceMatching(manager, matching)
         _cf.CFRelease(matching)
 
@@ -194,23 +198,30 @@ class MacOSLEDNotifier(AbstractKeyboardLEDNotifier):
         return manager, list(devices_arr)
 
     def _find_caps_lock_element(self, device: c_void_p):
-        """デバイスからCaps Lock LEDエレメントを検索して返す。"""
+        """デバイスからCaps Lock LEDエレメントを検索して返す。
+
+        IOHIDDeviceCopyMatchingElements は CFArrayRef を返すため
+        CFArray 系の関数を使用する。
+        """
         elements = _iokit.IOHIDDeviceCopyMatchingElements(device, None, _kIOHIDOptionsTypeNone)
         if not elements:
             return None
 
-        count = _cf.CFSetGetCount(elements)
-        arr = (c_void_p * count)()
-        _cf.CFSetGetValues(elements, arr)
-        _cf.CFRelease(elements)
-
-        for elem in arr:
+        count = _cf.CFArrayGetCount(elements)
+        result = None
+        for i in range(count):
+            elem = _cf.CFArrayGetValueAtIndex(elements, i)
+            if not elem:
+                continue
             usage_page = _iokit.IOHIDElementGetUsagePage(elem)
             usage = _iokit.IOHIDElementGetUsage(elem)
             # LED Usage Page = 0x08, Caps Lock = 0x02
             if usage_page == 0x08 and usage == _kHIDUsage_LED_CapsLock:
-                return elem
-        return None
+                result = elem
+                break
+
+        _cf.CFRelease(elements)
+        return result
 
     def set_led(self, state: bool) -> None:
         """Caps Lock LEDを直接制御する。"""
