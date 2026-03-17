@@ -75,7 +75,8 @@ def _detect_choice(data: bytes) -> int | None:
     bin_width = SAMPLE_RATE / len(samples)
 
     # ノイズフロア: 中央値（低周波ノイズの大きなピークに引っ張られない）
-    noise_floor = float(np.median(spectrum))
+    # 無音入力などで 0 になると SNR 計算で ZeroDivisionError が起きるため下限を設ける
+    noise_floor = max(float(np.median(spectrum)), 1e-6)
 
     # 各ターゲット周波数の振幅を ±FREQ_TOLERANCE 窓内の最大値で取得
     target_amps: dict[int, float] = {}
@@ -163,7 +164,8 @@ class AudioVoteNetwork:
             finally:
                 pa.terminate()
 
-        self._last_sent_at[choice] = time.monotonic()
+        with self._lock:
+            self._last_sent_at[choice] = time.monotonic()
         threading.Thread(target=_play, daemon=True).start()
 
         with self._lock:
@@ -207,10 +209,9 @@ class AudioVoteNetwork:
                 choice = _detect_choice(data)
                 if choice is not None:
                     now = time.monotonic()
-                    last = max(
-                        last_accepted_at.get(choice, 0.0),
-                        self._last_sent_at.get(choice, 0.0),
-                    )
+                    with self._lock:
+                        sent_at = self._last_sent_at.get(choice, 0.0)
+                    last = max(last_accepted_at.get(choice, 0.0), sent_at)
                     if now - last < DEBOUNCE_SEC:
                         continue
                     last_accepted_at[choice] = now
