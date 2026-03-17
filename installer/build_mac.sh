@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="CunningApp"
-DIST_DIR="../dist"
+DIST_DIR="dist"
 DMG_NAME="${APP_NAME}.dmg"
 
 echo "==> .dmg を生成します..."
