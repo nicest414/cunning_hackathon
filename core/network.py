@@ -13,7 +13,7 @@ _BUFFER_SIZE = 1024
 class VoteNetwork:
     def __init__(self, on_update: Callable[[Counter], None]) -> None:
         """
-        on_update: 集計結果 Counter({1: 2, 3: 1, ...}) を受け取るコールバック。
+        on_update: 集計結果 C¡ounter({1: 2, 3: 1, ...}) を受け取るコールバック。
         """
         self._on_update = on_update
         self._votes: Counter = Counter()
@@ -22,6 +22,9 @@ class VoteNetwork:
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP通信
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # macOS では SO_REUSEPORT が必要。Windows には存在しないため条件付きで設定する。
+        if hasattr(socket, "SO_REUSEPORT"):
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         self._sock.bind(("", BROADCAST_PORT))
         self._sock.settimeout(1.0)
 
