@@ -13,6 +13,16 @@ _PROMPT = (
     "余計な説明は不要です。"
 )
 
+_TEXT_PROMPT = (
+    "以下のテキストは試験・テスト・問題集の問題文です。"
+    "問題に対する正しい回答を簡潔に答えてください。\n"
+    "- 四択問題の場合: 正解の選択肢のテキストをそのまま返してください\n"
+    "- 計算問題の場合: 計算結果の数値のみ返してください\n"
+    "- 記述問題の場合: 模範解答を簡潔に返してください\n"
+    "前置き・説明・理由は一切不要です。回答のみを返してください。\n\n"
+    "問題文:\n"
+)
+
 _client: genai.Client | None = None
 
 
@@ -49,7 +59,7 @@ def ask(image_bytes: bytes) -> str:
             return "?"
 
     answer = response.text.strip()
-    
+
     # 少し柔軟に解釈（ア,イ,ウ,エ や A,B,C,D を 1,2,3,4 にマッピング）
     mapping = {
         "1": "1", "2": "2", "3": "3", "4": "4",
@@ -62,3 +72,26 @@ def ask(image_bytes: bytes) -> str:
     if answer in mapping:
         return mapping[answer]
     return "?"
+
+
+def ask_text(question: str) -> str:
+    """テキスト問題文を Gemini に送り、回答文字列を返す。四択・記述・計算に対応。"""
+    assert _client is not None, "ai_client.init() を先に呼び出してください"
+
+    prompt = _TEXT_PROMPT + question
+
+    try:
+        response = _client.models.generate_content(
+            model=_MODEL_NAME,
+            contents=[prompt],
+        )
+    except Exception:
+        try:
+            response = _client.models.generate_content(
+                model=_FALLBACK_MODEL,
+                contents=[prompt],
+            )
+        except Exception:
+            return ""
+
+    return response.text.strip()

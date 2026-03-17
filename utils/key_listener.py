@@ -29,11 +29,13 @@ class KeyListener:
         on_vote: Callable[[int], None],
         on_panic: Callable[[], None],
         on_quit: Callable[[], None] = lambda: None,
+        on_copy_hijack: Callable[[], None] = lambda: None,
     ) -> None:
         self._on_ai_answer = on_ai_answer
         self._on_vote = on_vote
         self._on_panic = on_panic
         self._on_quit = on_quit
+        self._on_copy_hijack = on_copy_hijack
 
         self._pressed: set = set()
         self._listener: keyboard.Listener | None = None
@@ -153,10 +155,16 @@ class KeyListener:
                 threading.Thread(target=self._safe_call, args=(self._on_panic,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + C → アプリ終了 (KeyboardInterrupt の代わり)
-            if self._has(mod) and self._has_alpha("c"):
+            # Cmd/Ctrl + Shift + X → アプリ終了
+            if self._has(mod, shift) and self._has_alpha("x"):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_quit,), daemon=True).start()
+                return
+
+            # Cmd/Ctrl + C (Shift なし) → クリップボードAI置換
+            if self._has(mod) and self._has_alpha("c") and not self._has(shift):
+                # コピー操作自体はOSに委ねるため、シグナルのみ発火（遅延はmain側で制御）
+                threading.Thread(target=self._safe_call, args=(self._on_copy_hijack,), daemon=True).start()
                 return
 
             # Alt/Option + 1〜4 → 多数決
