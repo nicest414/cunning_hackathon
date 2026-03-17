@@ -58,4 +58,6 @@ class ApologyWindow(QWidget):
         """謝罪を開始する。5秒後に自動で消える。"""
         self._label.setGeometry(self.rect())
         self.show()
+        self.raise_()
+        self.activateWindow()
         self._timer.start(_AUTO_CLOSE_MS)
