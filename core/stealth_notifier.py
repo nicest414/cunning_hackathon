@@ -115,8 +115,31 @@ class AbstractKeyboardLEDNotifier(ABC):
 
     def notify_ready(self) -> None:
         """クリップボード置換の準備が完了したことを通知する（2回短く点滅）。"""
+        # 即時にロックを取れない場合は、進行中の通知をキャンセルして
+        # 短時間だけロック取得を待つ。これにより「受理 → 準備完了」の
+        # 順序付き通知が高い確率で保証される。
         if not self._lock.acquire(blocking=False):
-            return
+            # すでに別の通知シーケンスが走っている想定なので、まずキャンセルを要求
+            try:
+                self.cancel()
+            except Exception:
+                # ステルス性重視のため、ここでの失敗は黙って諦める
+                return
+
+            # キャンセル要求後、短いタイムアウト付きでロック再取得を試みる
+            try:
+                acquired: bool = self._lock.acquire(timeout=0.3)
+            except TypeError:
+                # 古いPythonなどで timeout 引数がサポートされない場合のフォールバック
+                # この場合はこれ以上ブロックせずに諦める
+                return
+            except Exception:
+                # 予期せぬ例外もステルス性を優先して握りつぶす
+                return
+
+            if not acquired:
+                # 短時間待ってもロックが取れない場合は通知を諦める
+                return
 
         self._cancel_event.clear()
         self._running = True
