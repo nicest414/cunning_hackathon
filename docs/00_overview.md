@@ -15,11 +15,17 @@
 | 3 | `step2_setup_dialog.md` | `ui/setup_dialog.py` | 新規作成 |
 | 4 | `step3_main_refactor.md` | `main.py` | 変更 |
 | 5 | `step3_main_refactor.md` | `requirements.txt` | 変更（keyring 追加） |
+| 6 | `step4_build_spec.md` | `installer/app.spec` | 新規作成 |
+| 7 | `step4_build_spec.md` | `installer/build_mac.sh` | 新規作成 |
+| 8 | `step4_build_spec.md` | `installer/installer.iss` | 新規作成 |
+| 9 | `step5_build_script.md` | `build.py` | 新規作成 |
+| 10 | `step5_build_script.md` | `requirements-build.txt` | 新規作成 |
 
 ## 実行順序
 
 ```
 step1_credentials.md  →  step2_setup_dialog.md  →  step3_main_refactor.md
+  →  step4_build_spec.md  →  step5_build_script.md
 ```
 
 各ドキュメントを **1つずつ順に** Claude Code に投げること。
