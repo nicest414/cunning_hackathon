@@ -89,7 +89,7 @@ class WindowsLEDNotifier(AbstractKeyboardLEDNotifier):
             handle = kernel32.CreateFileW(
                 path,
                 _GENERIC_WRITE,  # READ権限を要求するとSharing Violationになることが多い
-                0,  # 排他アクセスのため _FILE_SHARE_READ | _FILE_SHARE_WRITE を 0 に変更
+                _FILE_SHARE_READ | _FILE_SHARE_WRITE,  # 共有アクセスを許可してキーボードフックと共存させる
                 None,
                 _OPEN_EXISTING,
                 _FILE_ATTRIBUTE_NORMAL,

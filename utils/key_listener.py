@@ -79,6 +79,8 @@ class KeyListener:
         for k in self._pressed:
             if _IS_MAC and hasattr(k, "vk") and k.vk == self._MAC_ALPHA_VK.get(char):
                 return True
+            if not _IS_MAC and hasattr(k, "vk") and k.vk == ord(char.upper()):
+                return True
             if hasattr(k, "char") and k.char and k.char.lower() == char:
                 return True
         return False
@@ -88,6 +90,9 @@ class KeyListener:
         for k in self._pressed:
             # vk ベースで判定（修飾キーによる char 変換を無視できる）
             if _IS_MAC and hasattr(k, "vk") and k.vk == self._MAC_NUM_VK.get(n):
+                return True
+            # Windows/Linux: vk で判定
+            if not _IS_MAC and hasattr(k, "vk") and k.vk == ord(str(n)):
                 return True
             # Windows/Linux: char で判定
             if hasattr(k, "char") and k.char == str(n):
