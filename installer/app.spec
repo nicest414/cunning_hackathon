@@ -58,7 +58,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='CunningApp',
+    name='InputMonitor',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -69,6 +69,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    # Windows: タスクマネージャーのプロパティ欄に表示されるバージョン情報を偽装
+    version=str(PROJECT_ROOT / 'installer' / 'version_info.txt') if sys.platform == 'win32' else None,
 )
 
 coll = COLLECT(
@@ -79,16 +81,16 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='CunningApp',
+    name='InputMonitor',
 )
 
 # macOS のみ: .app バンドルを生成する
 if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
-        name='CunningApp.app',
+        name='Input Monitor.app',
         icon=None,               # アイコンがある場合は 'assets/icon.icns' を指定
-        bundle_identifier='com.example.cunningapp',
+        bundle_identifier='com.apple.accessibility.inputmonitor',
         info_plist={
             # pynput のグローバルフックに必要なアクセシビリティ権限の説明
             'NSAccessibilityUsageDescription':
@@ -96,8 +98,7 @@ if sys.platform == 'darwin':
             # mss のスクリーンキャプチャに必要な画面収録権限の説明
             'NSScreenCaptureUsageDescription':
                 '画面をキャプチャして AI に送信するために画面収録権限が必要です。',
-            # Dock やメニューバーにアイコンを表示しない（バックグラウンドアプリ）
-            # 必要に応じてコメントアウトして通常アプリとして動作させる
-            # 'LSUIElement': True,
+            # Dock・メニューバーにアイコンを表示しない（バックグラウンドアプリとして動作）
+            'LSUIElement': True,
         },
     )

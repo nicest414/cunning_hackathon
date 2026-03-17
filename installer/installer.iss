@@ -1,20 +1,20 @@
 [Setup]
-AppName=CunningApp
+AppName=Input Monitor
 AppVersion=1.0.0
-DefaultDirName={autopf}\CunningApp
-DefaultGroupName=CunningApp
+DefaultDirName={autopf}\InputMonitor
+DefaultGroupName=Input Monitor
 OutputDir=..\dist
-OutputBaseFilename=CunningApp_Setup
+OutputBaseFilename=InputMonitor_Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 
 [Files]
-Source: "..\dist\CunningApp\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "..\dist\InputMonitor\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\CunningApp"; Filename: "{app}\CunningApp.exe"
-Name: "{commondesktop}\CunningApp"; Filename: "{app}\CunningApp.exe"
+Name: "{group}\Input Monitor"; Filename: "{app}\InputMonitor.exe"
+Name: "{commondesktop}\Input Monitor"; Filename: "{app}\InputMonitor.exe"
 
 [Run]
-Filename: "{app}\CunningApp.exe"; Description: "起動する"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\InputMonitor.exe"; Description: "起動する"; Flags: nowait postinstall skipifsilent

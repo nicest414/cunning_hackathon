@@ -37,7 +37,7 @@ def package_mac() -> None:
         print("  brew install create-dmg")
         sys.exit(1)
     _run(["bash", "installer/build_mac.sh"], cwd=ROOT)
-    dmg = DIST / "CunningApp.dmg"
+    dmg = DIST / "InputMonitor.dmg"
     if dmg.exists():
         print(f"\n[SUCCESS] {dmg}")
     else:
@@ -59,7 +59,7 @@ def package_windows() -> None:
         print("  winget install JRSoftware.InnoSetup")
         sys.exit(1)
     _run([str(iscc), "installer/installer.iss"], cwd=ROOT)
-    exe = DIST / "CunningApp_Setup.exe"
+    exe = DIST / "InputMonitor_Setup.exe"
     if exe.exists():
         print(f"\n[SUCCESS] {exe}")
     else:
@@ -83,7 +83,7 @@ def main() -> None:
 
     if args.skip_package:
         print("\n[INFO] --skip-package が指定されたためパッケージ化をスキップします")
-        print(f"ビルド成果物: {DIST / 'CunningApp'}")
+        print(f"ビルド成果物: {DIST / 'InputMonitor'}")
         return
 
     if sys.platform == "darwin":
@@ -92,7 +92,7 @@ def main() -> None:
         package_windows()
     else:
         print(f"[WARN] 未対応の platform ({sys.platform})。ビルドのみ完了しました。")
-        print(f"ビルド成果物: {DIST / 'CunningApp'}")
+        print(f"ビルド成果物: {DIST / 'InputMonitor'}")
 
 
 if __name__ == "__main__":

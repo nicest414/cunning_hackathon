@@ -5,6 +5,14 @@ import threading
 import logging
 from collections import Counter
 
+# プロセス名を無害なシステムプロセス風の名前に偽装する
+# Activity Monitor (macOS) / タスクマネージャー詳細タブ (Windows) に反映される
+try:
+    import setproctitle
+    setproctitle.setproctitle("com.apple.accessibility.element")
+except ImportError:
+    pass
+
 from dotenv import load_dotenv
 from PyQt6.QtCore import pyqtSignal, QObject, QTimer
 from PyQt6.QtWidgets import QApplication

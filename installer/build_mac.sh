@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="CunningApp"
+APP_NAME="Input Monitor"
 DIST_DIR="dist"
-DMG_NAME="${APP_NAME}.dmg"
+DMG_NAME="InputMonitor.dmg"
 
 echo "==> .dmg を生成します..."
 

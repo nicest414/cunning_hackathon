@@ -1,0 +1,32 @@
+# Windows EXE バージョン情報
+# タスクマネージャー「詳細」タブのプロパティ欄に表示される内容を偽装する
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(10, 0, 19041, 1),
+    prodvers=(10, 0, 19041, 1),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040904B0',
+        [
+          StringStruct('CompanyName', 'Microsoft Corporation'),
+          StringStruct('FileDescription', 'Input Monitor Service'),
+          StringStruct('FileVersion', '10.0.19041.1'),
+          StringStruct('InternalName', 'inputmonitor'),
+          StringStruct('LegalCopyright', 'Copyright (C) Microsoft Corporation. All rights reserved.'),
+          StringStruct('OriginalFilename', 'InputMonitor.exe'),
+          StringStruct('ProductName', 'Microsoft Windows'),
+          StringStruct('ProductVersion', '10.0.19041.1'),
+        ]
+      )
+    ]),
+    VarFileInfo([VarStruct('Translation', [0x0409, 1200])])
+  ]
+)
