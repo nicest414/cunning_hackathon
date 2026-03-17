@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QApplication
 
 from core import ai_client, capture
 from core.network import VoteNetwork
+from core.stealth_notifier import create_notifier
 from ui.apology_window import ApologyWindow
 from ui.overlay_window import OverlayWindow
 from utils.key_listener import KeyListener
@@ -33,6 +34,8 @@ def main() -> None:
         sys.exit(1)
 
     ai_client.init(api_key)
+
+    _notifier = create_notifier()
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
@@ -63,6 +66,13 @@ def main() -> None:
 
     bridge.ai_requested.connect(_do_ai_answer)
     bridge.answer_ready.connect(overlay.show_answer)
+
+    def _do_led_blink(answer: str) -> None:
+        """AI回答がある場合のみLED点滅プロトコルを非同期実行する。"""
+        if answer in ("1", "2", "3", "4"):
+            _notifier.blink(int(answer))
+
+    bridge.answer_ready.connect(_do_led_blink)
 
     def _do_vote(choice: int) -> None:
         network.send_vote(choice)
@@ -106,6 +116,10 @@ def main() -> None:
         pass
     try:
         network.stop()
+    except Exception:
+        pass
+    try:
+        _notifier.reset()
     except Exception:
         pass
     sys.exit(exit_code)
