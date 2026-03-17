@@ -28,14 +28,6 @@ class TestVoteNetwork(unittest.TestCase):
         importlib.reload(core.network)
 
     # ------------------------------------------------------------------
-    def test_send_vote_increments_counter(self):
-        """send_vote(2) を呼ぶと _votes[2] が 1 増える。"""
-        net, mock_sock, on_update = self._make_network()
-
-        net.send_vote(2)
-
-        self.assertEqual(net._votes[2], 1)
-
     def test_send_vote_broadcasts_json(self):
         """send_vote は JSON ペイロードをブロードキャストアドレスへ送る。"""
         from core.network import BROADCAST_ADDR, BROADCAST_PORT
@@ -48,29 +40,14 @@ class TestVoteNetwork(unittest.TestCase):
             expected_payload, (BROADCAST_ADDR, BROADCAST_PORT)
         )
 
-    def test_send_vote_calls_on_update(self):
-        """send_vote 後に on_update コールバックが Counter を引数に呼ばれる。"""
-        on_update = MagicMock()
-        net, mock_sock, _ = self._make_network(on_update=on_update)
-
-        net.send_vote(1)
-
-        on_update.assert_called_once()
-        args, _ = on_update.call_args
-        self.assertIsInstance(args[0], Counter)
-        self.assertEqual(args[0][1], 1)
-
-    def test_multiple_votes_accumulate(self):
-        """複数回 send_vote すると票が累積する。"""
+    def test_send_vote_does_not_update_counter(self):
+        """send_vote はブロードキャスト送信のみ行い、ローカル _votes は変えない。"""
         net, mock_sock, on_update = self._make_network()
 
         net.send_vote(1)
-        net.send_vote(1)
-        net.send_vote(2)
 
-        self.assertEqual(net._votes[1], 2)
-        self.assertEqual(net._votes[2], 1)
-        self.assertEqual(net._votes[3], 0)
+        self.assertEqual(len(net._votes), 0)
+        on_update.assert_not_called()
 
     def test_reset_clears_votes(self):
         """reset() で _votes がすべてクリアされる。"""

@@ -62,7 +62,7 @@ class VoteNetwork:
         self._sock.close()
 
     def send_vote(self, choice: int) -> None:
-        """自分の回答 (1〜4) をブロードキャスト送信し、ローカル集計も更新する。"""
+        """自分の回答 (1〜4) をブロードキャスト送信する。集計は受信側 (_listen) で行う。"""
         payload = json.dumps({"vote": choice}).encode()
         self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
 
