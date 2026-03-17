@@ -6,8 +6,25 @@ from collections import Counter
 from typing import Callable
 
 BROADCAST_PORT = 45678
-BROADCAST_ADDR = "192.168.11.255"
 _BUFFER_SIZE = 1024
+
+
+def _get_broadcast_addr() -> str:
+    """デフォルトインターフェースのブロードキャストアドレスを動的に取得する。
+
+    UDP ソケットで外部アドレスに「接続」することでデフォルト経路の
+    ローカル IP を取得し、/24 を仮定してブロードキャストアドレスを算出する。
+    取得できない場合は 255.255.255.255（limited broadcast）へフォールバック。
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            local_ip: str = s.getsockname()[0]
+        # 一般的な家庭/オフィス Wi-Fi は /24 のため最終オクテットを 255 に置換
+        prefix = local_ip.rsplit(".", 1)[0]
+        return f"{prefix}.255"
+    except OSError:
+        return "255.255.255.255"
 
 
 class VoteNetwork:
@@ -42,7 +59,7 @@ class VoteNetwork:
     def send_vote(self, choice: int) -> None:
         """自分の回答 (1〜4) をブロードキャスト送信する。"""
         payload = json.dumps({"vote": choice}).encode()
-        self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
+        self._sock.sendto(payload, (_get_broadcast_addr(), BROADCAST_PORT))
 
     def reset(self) -> None:
         with self._lock:
