@@ -101,6 +101,10 @@ class AbstractKeyboardLEDNotifier(ABC):
                 if self._sleep(0.5):
                     return
                 self.set_led(False)
+            except Exception as e:
+                # LED制御の失敗はステルス性を優先して握りつぶし、
+                # 最小限の情報のみstderrに出力する
+                print(f"[LED] notify_accepted() failed: {e}", file=sys.stderr)
             finally:
                 self.reset()
                 self._running = False
