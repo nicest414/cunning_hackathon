@@ -87,6 +87,80 @@ class AbstractKeyboardLEDNotifier(ABC):
         """実行中のプロトコルをキャンセルし、LEDをリセットする。"""
         self._cancel_event.set()
 
+    def notify_accepted(self) -> None:
+        """クリップボード置換のリクエストを受理したことを通知する（1回点灯）。"""
+        if not self._lock.acquire(blocking=False):
+            return
+
+        self._cancel_event.clear()
+        self._running = True
+
+        def _run() -> None:
+            try:
+                self.set_led(True)
+                if self._sleep(0.5):
+                    return
+                self.set_led(False)
+            except Exception as e:
+                # LED制御の失敗はステルス性を優先して握りつぶし、
+                # 最小限の情報のみstderrに出力する
+                print(f"[LED] notify_accepted() failed: {e}", file=sys.stderr)
+            finally:
+                self.reset()
+                self._running = False
+                self._lock.release()
+
+        t = threading.Thread(target=_run, daemon=True, name="stealth-led-accept")
+        t.start()
+
+    def notify_ready(self) -> None:
+        """クリップボード置換の準備が完了したことを通知する（2回短く点滅）。"""
+        # 即時にロックを取れない場合は、進行中の通知をキャンセルして
+        # 短時間だけロック取得を待つ。これにより「受理 → 準備完了」の
+        # 順序付き通知が高い確率で保証される。
+        if not self._lock.acquire(blocking=False):
+            # すでに別の通知シーケンスが走っている想定なので、まずキャンセルを要求
+            try:
+                self.cancel()
+            except Exception:
+                # ステルス性重視のため、ここでの失敗は黙って諦める
+                return
+
+            # キャンセル要求後、短いタイムアウト付きでロック再取得を試みる
+            try:
+                acquired: bool = self._lock.acquire(timeout=0.3)
+            except TypeError:
+                # 古いPythonなどで timeout 引数がサポートされない場合のフォールバック
+                # この場合はこれ以上ブロックせずに諦める
+                return
+            except Exception:
+                # 予期せぬ例外もステルス性を優先して握りつぶす
+                return
+
+            if not acquired:
+                # 短時間待ってもロックが取れない場合は通知を諦める
+                return
+
+        self._cancel_event.clear()
+        self._running = True
+
+        def _run() -> None:
+            try:
+                for _ in range(2):
+                    self.set_led(True)
+                    if self._sleep(0.1):
+                        return
+                    self.set_led(False)
+                    if self._sleep(0.1):
+                        return
+            finally:
+                self.reset()
+                self._running = False
+                self._lock.release()
+
+        t = threading.Thread(target=_run, daemon=True, name="stealth-led-ready")
+        t.start()
+
     # ---- 内部実装 ----
 
     def _sleep(self, seconds: float) -> bool:

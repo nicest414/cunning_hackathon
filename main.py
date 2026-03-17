@@ -1,8 +1,8 @@
-"""全自動カンニング風ネタアプリ エントリーポイント。"""
 import os
 import signal
 import sys
 import threading
+import logging
 from collections import Counter
 
 from dotenv import load_dotenv
@@ -102,10 +102,14 @@ def main() -> None:
             if current_text and current_text != prev_text:
                 timer.stop()
                 question = current_text
+                print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
+                _notifier.notify_accepted()
 
                 def _task() -> None:
                     answer = ai_client.ask_text(question)
                     if answer:
+                        print(f"[Clipboard] 返答を受信し、クリップボードを置換します。")
+                        _notifier.notify_ready()
                         bridge.clipboard_replace.emit(answer)
 
                 threading.Thread(target=_task, daemon=True).start()
