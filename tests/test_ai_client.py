@@ -129,6 +129,51 @@ class TestAiClient(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.ai_client.ask(b"fake-png")
 
+    # ------------------------------------------------------------------
+    # ask_text() のテスト
+    # ------------------------------------------------------------------
+
+    def test_ask_text_returns_stripped_response(self):
+        """ask_text() はモデルの応答をstrip()して返す。"""
+        mock_client = MagicMock()
+        self.ai_client._client = mock_client
+        mock_response = MagicMock()
+        mock_response.text = "  東京  "
+        mock_client.models.generate_content.return_value = mock_response
+
+        result = self.ai_client.ask_text("日本の首都はどこですか？")
+        self.assertEqual(result, "東京")
+
+    def test_ask_text_fallback_on_primary_failure(self):
+        """ask_text() は一次モデルが失敗するとフォールバックモデルで再試行する。"""
+        mock_client = MagicMock()
+        self.ai_client._client = mock_client
+        fallback_response = MagicMock()
+        fallback_response.text = "フォールバック回答"
+        mock_client.models.generate_content.side_effect = [
+            Exception("primary model error"),
+            fallback_response,
+        ]
+
+        result = self.ai_client.ask_text("テスト問題")
+        self.assertEqual(result, "フォールバック回答")
+        self.assertEqual(mock_client.models.generate_content.call_count, 2)
+
+    def test_ask_text_returns_empty_string_when_both_fail(self):
+        """ask_text() は一次・フォールバック両方失敗すると空文字を返す。"""
+        mock_client = MagicMock()
+        self.ai_client._client = mock_client
+        mock_client.models.generate_content.side_effect = Exception("all models failed")
+
+        result = self.ai_client.ask_text("テスト問題")
+        self.assertEqual(result, "")
+
+    def test_ask_text_without_init_raises(self):
+        """init() を呼ばずに ask_text() するとエラーになる。"""
+        self.ai_client._client = None
+        with self.assertRaises(AssertionError):
+            self.ai_client.ask_text("テスト問題")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -40,14 +40,17 @@ class TestVoteNetwork(unittest.TestCase):
             expected_payload, (BROADCAST_ADDR, BROADCAST_PORT)
         )
 
-    def test_send_vote_does_not_update_counter(self):
-        """send_vote はブロードキャスト送信のみ行い、ローカル _votes は変えない。"""
-        net, mock_sock, on_update = self._make_network()
+    def test_send_vote_updates_local_counter(self):
+        """send_vote はブロードキャスト送信に加え、ローカル _votes を即時加算する。"""
+        on_update = MagicMock()
+        net, mock_sock, _ = self._make_network(on_update=on_update)
 
         net.send_vote(1)
 
-        self.assertEqual(len(net._votes), 0)
-        on_update.assert_not_called()
+        self.assertEqual(net._votes[1], 1)
+        on_update.assert_called_once()
+        args, _ = on_update.call_args
+        self.assertEqual(args[0][1], 1)
 
     def test_reset_clears_votes(self):
         """reset() で _votes がすべてクリアされる。"""
@@ -148,6 +151,35 @@ class TestVoteNetwork(unittest.TestCase):
 
         # 票は加算されていない
         self.assertEqual(len(net._votes), 0)
+
+    def test_listen_ignores_self_sent_packet(self):
+        """_listen() は自分の IP から来たパケットを無視して二重加算を防ぐ。"""
+        on_update = MagicMock()
+        mock_sock = MagicMock()
+
+        call_count = [0]
+        local_ip = "192.168.1.10"
+
+        def controlled_recvfrom(_size):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return json.dumps({"vote": 2}).encode(), (local_ip, 45678)
+            net._running = False
+            raise socket.timeout
+
+        mock_sock.recvfrom.side_effect = controlled_recvfrom
+
+        with patch("socket.socket", return_value=mock_sock):
+            from core.network import VoteNetwork
+            net = VoteNetwork(on_update=on_update)
+
+        net._local_ip = local_ip
+        net._running = True
+        on_update.reset_mock()
+        net._listen()
+
+        self.assertEqual(net._votes[2], 0)
+        on_update.assert_not_called()
 
     def test_listen_ignores_out_of_range_vote(self):
         """_listen() が 1〜4 以外の vote 値を無視する。"""

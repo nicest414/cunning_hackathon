@@ -163,6 +163,7 @@ class KeyListener:
 
             # Cmd/Ctrl + C (Shift なし) → クリップボードAI置換
             if self._has(mod) and self._has_alpha("c") and not self._has(shift):
+                self._pressed.clear()  # キーリピートによる多重発火を防ぐ
                 # コピー操作自体はOSに委ねるため、シグナルのみ発火（遅延はmain側で制御）
                 threading.Thread(target=self._safe_call, args=(self._on_copy_hijack,), daemon=True).start()
                 return

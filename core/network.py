@@ -11,6 +11,16 @@ BROADCAST_PORT = 45678
 _BUFFER_SIZE = 1024
 
 
+def _get_local_ip() -> str:
+    """デフォルトインターフェースのローカル IP アドレスを返す。取得できない場合は '127.0.0.1'。"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+
+
 def _get_broadcast_addr() -> str:
     """デフォルトインターフェースのブロードキャストアドレスを動的に取得する。
 
@@ -19,9 +29,7 @@ def _get_broadcast_addr() -> str:
     取得できない場合は 255.255.255.255（limited broadcast）へフォールバック。
     """
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))
-            local_ip: str = s.getsockname()[0]
+        local_ip = _get_local_ip()
         # 一般的な家庭/オフィス Wi-Fi は /24 のため最終オクテットを 255 に置換
         prefix = local_ip.rsplit(".", 1)[0]
         return f"{prefix}.255"
@@ -40,6 +48,7 @@ class VoteNetwork:
         self._on_update = on_update
         self._votes: Counter = Counter()
         self._lock = threading.Lock()
+        self._local_ip: str = _get_local_ip()  # 自己送信パケット除外用
 
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP通信
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -62,9 +71,18 @@ class VoteNetwork:
         self._sock.close()
 
     def send_vote(self, choice: int) -> None:
-        """自分の回答 (1〜4) をブロードキャスト送信する。集計は受信側 (_listen) で行う。"""
+        """自分の回答 (1〜4) をブロードキャスト送信し、ローカルにも即時集計する。
+
+        UDP ブロードキャストが自己受信できない環境でも確実に自票を反映するため、
+        送信と同時にローカルの _votes に加算する。
+        _listen() 側では同じ IP からのパケットを除外することで二重加算を防ぐ。
+        """
         payload = json.dumps({"vote": choice}).encode()
         self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
+        if choice in (1, 2, 3, 4):
+            with self._lock:
+                self._votes[choice] += 1
+            self._on_update(Counter(self._votes))
 
     def reset(self) -> None:
         with self._lock:
@@ -75,6 +93,8 @@ class VoteNetwork:
         while self._running:
             try:
                 data, addr = self._sock.recvfrom(_BUFFER_SIZE)
+                if addr[0] == self._local_ip:
+                    continue  # 自己送信パケットは send_vote() 側で集計済みのため無視
                 if os.environ.get("VOTE_DEBUG"):
                     print(f"[VoteNetwork] recv from {addr}: {data!r}", file=sys.stderr, flush=True)
                 payload = json.loads(data.decode())

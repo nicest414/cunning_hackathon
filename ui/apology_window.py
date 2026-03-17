@@ -12,13 +12,16 @@ _AUTO_CLOSE_MS = 5000  # 5秒後に自動で消える
 
 
 def _pick_random_image() -> str | None:
-    """assets ディレクトリから画像ファイルをランダムに1枚選ぶ。"""
-    images = [
-        os.path.join(_ASSETS_DIR, f)
-        for f in os.listdir(_ASSETS_DIR)
-        if os.path.splitext(f)[1].lower() in _IMAGE_EXTENSIONS
-    ]
-    return random.choice(images) if images else None
+    """assets ディレクトリから画像ファイルをランダムに1枚選ぶ。取得できない場合は None を返す。"""
+    try:
+        images = [
+            os.path.join(_ASSETS_DIR, f)
+            for f in os.listdir(_ASSETS_DIR)
+            if os.path.splitext(f)[1].lower() in _IMAGE_EXTENSIONS
+        ]
+        return random.choice(images) if images else None
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
 
 
 class ApologyWindow(QWidget):
