@@ -22,8 +22,11 @@ from core.network import VoteNetwork
 from core.audio_network import AudioVoteNetwork
 from core.stealth_notifier import create_notifier
 from ui.apology_window import ApologyWindow
+from ui.key_config_dialog import KeyConfigDialog
+from ui.key_config_prompt import KeyConfigPrompt
 from ui.overlay_window import OverlayWindow
 from ui.setup_dialog import SetupDialog
+from utils import keyconfig
 from utils.key_listener import KeyListener
 from utils.selection import get_selected_text
 
@@ -62,6 +65,21 @@ def main() -> None:
             sys.exit(1)
 
     ai_client.init(api_key)
+
+    # キーコンフィグ設定フロー（ビルド版のみ）
+    IS_FROZEN = getattr(sys, "frozen", False)
+    if IS_FROZEN:
+        if not keyconfig.config_exists():
+            # 初回: そのままキー設定ダイアログを表示
+            cfg_dialog = KeyConfigDialog(keyconfig.load())
+            cfg_dialog.exec()
+            # キャンセルでもデフォルト設定で続行（reject = デフォルトで起動）
+        else:
+            # 2回目以降: 変更するか確認
+            prompt = KeyConfigPrompt()
+            if prompt.exec() == KeyConfigPrompt.DialogCode.Accepted:
+                cfg_dialog = KeyConfigDialog(keyconfig.load())
+                cfg_dialog.exec()
 
     _notifier = create_notifier()
 
@@ -144,12 +162,14 @@ def main() -> None:
     bridge.clipboard_replace.connect(app.clipboard().setText)
 
     # --- キーリスナー起動 ---
+    current_config = keyconfig.load()
     listener = KeyListener(
         on_ai_answer=bridge.ai_requested.emit,
         on_vote=bridge.vote_cast.emit,
         on_panic=bridge.panic_requested.emit,
         on_quit=app.quit,
         on_copy_hijack=bridge.copy_hijack_requested.emit,
+        keyconfig=current_config,
     )
     listener.start()
 
@@ -162,11 +182,9 @@ def main() -> None:
     _sigint_timer.start(200)
 
     print("カンニングアプリ 起動完了。")
-    print(f"  AI回答           : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
-    print(f"  クリップボード置換: Cmd+Shift+C      (Win/Linux: Ctrl+Shift+C)")
-    print(f"  多数決           : Option+1〜4      (Win/Linux: Alt+1〜4)")
-    print(f"  緊急謝罪         : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
-    print(f"  終了             : Cmd+Shift+X     (Win/Linux: Ctrl+Shift+X)")
+    for action, label in keyconfig.ACTION_LABELS.items():
+        keys_str = keyconfig.format_keys(current_config[action])
+        print(f"  {label:<22}: {keys_str}")
 
     exit_code = app.exec()
     try:

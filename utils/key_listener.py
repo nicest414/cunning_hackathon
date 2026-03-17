@@ -6,6 +6,8 @@ from typing import Callable
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
 
+from utils import keyconfig as _keyconfig
+
 _IS_MAC = platform.system() == "Darwin"
 
 # macOS: command / Windows・Linux: ctrl
@@ -30,12 +32,14 @@ class KeyListener:
         on_panic: Callable[[], None],
         on_quit: Callable[[], None] = lambda: None,
         on_copy_hijack: Callable[[], None] = lambda: None,
+        keyconfig: dict | None = None,
     ) -> None:
         self._on_ai_answer = on_ai_answer
         self._on_vote = on_vote
         self._on_panic = on_panic
         self._on_quit = on_quit
         self._on_copy_hijack = on_copy_hijack
+        self._keyconfig: dict[str, list[str]] = keyconfig if keyconfig is not None else _keyconfig.load()
 
         self._pressed: set = set()
         self._listener: keyboard.Listener | None = None
@@ -178,41 +182,58 @@ class KeyListener:
         except Exception as e:
             print(f"[Key ERROR] {e}")
 
+    def _match_keys(self, keys: list[str]) -> bool:
+        """keyconfig のキーリストが現在の押下状態と一致するか確認する。"""
+        for k in keys:
+            if k == "mod":
+                if not self._has(_MOD_KEY):
+                    return False
+            elif k == "shift":
+                if not self._has(Key.shift):
+                    return False
+            elif k == "alt":
+                if not self._has(Key.alt):
+                    return False
+            elif k == "space":
+                if not self._has(Key.space):
+                    return False
+            elif len(k) == 1 and k.isdigit():
+                if not self._has_num(int(k)):
+                    return False
+            elif len(k) == 1:
+                if not self._has_alpha(k):
+                    return False
+            else:
+                # その他の特殊キー名は無視（未サポート）
+                pass
+        return True
+
     def _check_hotkeys(self) -> None:
         try:
-            mod = _MOD_KEY
-            shift = Key.shift
-            alt = Key.alt  # macOS では option キーが alt として認識される
+            cfg = self._keyconfig
 
-            # Cmd/Ctrl + Shift + Space → AI回答
-            if self._has(mod, shift, Key.space):
-                self._pressed.clear()  # **全体をクリアして状態不整合を防ぐ**
+            if self._match_keys(cfg["ai_answer"]):
+                self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_ai_answer,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + Shift + A → パニック
-            if self._has(mod, shift) and self._has_alpha("a"):
+            if self._match_keys(cfg["panic"]):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_panic,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + Shift + X → アプリ終了
-            if self._has(mod, shift) and self._has_alpha("x"):
+            if self._match_keys(cfg["quit"]):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_quit,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + Shift + C → クリップボードAI置換
-            # Cmd+C（コピー）と分離することで OS との競合を完全に回避する。
-            # 選択中のテキストを内部で Cmd/Ctrl+C シミュレーションにより取得する。
-            if self._has(mod, shift) and self._has_alpha("c"):
+            if self._match_keys(cfg["clipboard_replace"]):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_copy_hijack,), daemon=True).start()
                 return
 
-            # Alt/Option + 1〜4 → 多数決
             for i in range(1, 5):
-                if self._has(alt) and self._has_num(i):
+                if self._match_keys(cfg[f"vote_{i}"]):
                     self._pressed.clear()
                     choice = i
                     threading.Thread(
