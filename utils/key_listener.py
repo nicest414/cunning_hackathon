@@ -202,10 +202,11 @@ class KeyListener:
                 threading.Thread(target=self._safe_call, args=(self._on_quit,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + C (Shift なし) → クリップボードAI置換
-            if self._has(mod) and self._has_alpha("c") and not self._has(shift):
-                self._pressed.clear()  # キーリピートによる多重発火を防ぐ
-                # コピー操作自体はOSに委ねるため、シグナルのみ発火（遅延はmain側で制御）
+            # Cmd/Ctrl + Shift + C → クリップボードAI置換
+            # Cmd+C（コピー）と分離することで OS との競合を完全に回避する。
+            # ユーザーが先に Cmd+C でコピーしてから本ホットキーを押す運用。
+            if self._has(mod, shift) and self._has_alpha("c"):
+                self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_copy_hijack,), daemon=True).start()
                 return
 

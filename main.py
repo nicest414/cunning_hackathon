@@ -25,6 +25,7 @@ from ui.apology_window import ApologyWindow
 from ui.overlay_window import OverlayWindow
 from ui.setup_dialog import SetupDialog
 from utils.key_listener import KeyListener
+from utils.selection import get_selected_text
 
 
 class _Bridge(QObject):
@@ -117,35 +118,27 @@ def main() -> None:
     bridge.panic_requested.connect(_do_panic)
 
     def _do_copy_hijack() -> None:
-        """Cmd+C 検知後、クリップボードの変化をポーリングして AI で内容を書き換える。"""
-        prev_text = app.clipboard().text()
-        # 最大500ms（50ms × 10回）ポーリング。重い環境でも追従できるよう余裕を持たせる。
-        remaining = [10]
-        timer = QTimer()
+        """Cmd+Shift+C 検知後、選択テキストを AI に送り返答でクリップボードを上書きする。
 
-        def _poll() -> None:
-            current_text = app.clipboard().text()
-            if current_text and current_text != prev_text:
-                timer.stop()
-                question = current_text
-                print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
-                _notifier.notify_accepted()
+        AX API でドラッグ選択中のテキストを直接取得する。コピー操作・クリップボードへの
+        アクセス競合が一切ない。AX で取得できない場合はクリップボードにフォールバック。
+        """
+        question = get_selected_text()
+        if not question:
+            print("[Clipboard] テキストが選択されていません。テキストを選択してから実行してください。")
+            return
 
-                def _task() -> None:
-                    answer = ai_client.ask_text(question)
-                    if answer:
-                        print(f"[Clipboard] 返答を受信し、クリップボードを置換します。")
-                        _notifier.notify_ready()
-                        bridge.clipboard_replace.emit(answer)
+        print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
+        _notifier.notify_accepted()
 
-                threading.Thread(target=_task, daemon=True).start()
-            else:
-                remaining[0] -= 1
-                if remaining[0] <= 0:
-                    timer.stop()
+        def _task() -> None:
+            answer = ai_client.ask_text(question)
+            if answer:
+                print(f"[Clipboard] 返答を受信し、クリップボードを置換します。")
+                _notifier.notify_ready()
+                bridge.clipboard_replace.emit(answer)
 
-        timer.timeout.connect(_poll)
-        timer.start(50)
+        threading.Thread(target=_task, daemon=True).start()
 
     bridge.copy_hijack_requested.connect(_do_copy_hijack)
     bridge.clipboard_replace.connect(app.clipboard().setText)
@@ -170,7 +163,7 @@ def main() -> None:
 
     print("カンニングアプリ 起動完了。")
     print(f"  AI回答           : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
-    print(f"  クリップボード置換: Cmd+C            (Win/Linux: Ctrl+C)")
+    print(f"  クリップボード置換: Cmd+Shift+C      (Win/Linux: Ctrl+Shift+C)")
     print(f"  多数決           : Option+1〜4      (Win/Linux: Alt+1〜4)")
     print(f"  緊急謝罪         : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
     print(f"  終了             : Cmd+Shift+X     (Win/Linux: Ctrl+Shift+X)")
