@@ -33,7 +33,7 @@ SAMPLE_RATE = 44100
 TONE_DURATION = 0.05       # 送信トーン長（秒）
 CHUNK_SIZE = 4096          # 受信チャンクサイズ（サンプル数）
 FREQ_TOLERANCE = 200       # 周波数判定の許容幅（Hz）
-SNR_THRESHOLD = 5.0       # ノイズフロア比: この倍数を超えた場合のみ検出
+SNR_THRESHOLD = 10.0       # ノイズフロア比: この倍数を超えた場合のみ検出
 
 FREQ_MAP: dict[int, int] = {
     1: 17000,
@@ -47,7 +47,6 @@ _CHOICE_BY_FREQ = {v: k for k, v in FREQ_MAP.items()}
 
 def is_available() -> bool:
     """pyaudio と numpy が利用可能かどうかを返す。"""
-    logger.info("is_available() called: _AVAILABLE=%s", _AVAILABLE)
     return _AVAILABLE
 
 
@@ -85,12 +84,6 @@ def _detect_choice(data: bytes) -> int | None:
         hi = int(min(len(spectrum) - 1, (choice_freq + FREQ_TOLERANCE) / bin_width)) + 1
         target_amps[choice_freq] = float(np.max(spectrum[lo:hi]))
 
-    logger.debug(
-        "FFT noise_floor=%.1f | target_amps=%s",
-        noise_floor,
-        {f"{f}Hz": f"{a:.1f}" for f, a in target_amps.items()},
-    )
-
     # SNR閾値を超えた中で最も振幅が大きいものを選択
     threshold = noise_floor * SNR_THRESHOLD
     best_choice: int | None = None
@@ -123,19 +116,14 @@ class AudioVoteNetwork:
         self._running = False
         self._thread: threading.Thread | None = None
         self._pa: "pyaudio.PyAudio | None" = None
+        # 自己ループバック抑制: send_vote した選択肢の送信時刻を記録
+        self._last_sent_at: dict[int, float] = {}
 
     def start(self) -> None:
         if not _AVAILABLE:
             logger.warning("AudioVoteNetwork: pyaudio/numpy が未インストールのため無効化")
             return
         self._pa = pyaudio.PyAudio()
-        logger.info("AudioVoteNetwork: PyAudio 初期化完了 (デバイス数=%d)", self._pa.get_device_count())
-        for i in range(self._pa.get_device_count()):
-            info = self._pa.get_device_info_by_index(i)
-            logger.info(
-                "  device[%d]: name=%r in_ch=%d out_ch=%d sr=%s",
-                i, info["name"], info["maxInputChannels"], info["maxOutputChannels"], info["defaultSampleRate"],
-            )
         self._running = True
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
@@ -157,7 +145,6 @@ class AudioVoteNetwork:
 
         freq = FREQ_MAP[choice]
         tone = _generate_tone(freq)
-        logger.info("send_vote: choice=%d freq=%d Hz tone_bytes=%d", choice, freq, len(tone))
 
         def _play() -> None:
             pa = pyaudio.PyAudio()
@@ -171,12 +158,12 @@ class AudioVoteNetwork:
                 stream.write(tone)
                 stream.stop_stream()
                 stream.close()
-                logger.info("send_vote: 再生完了 choice=%d", choice)
             except Exception as e:
                 logger.error("send_vote: 再生エラー: %s", e)
             finally:
                 pa.terminate()
 
+        self._last_sent_at[choice] = time.monotonic()
         threading.Thread(target=_play, daemon=True).start()
 
         with self._lock:
@@ -206,11 +193,10 @@ class AudioVoteNetwork:
             print(f"[AudioVoteNetwork] マイクのオープンに失敗しました: {e}")
             return
 
-        # デバウンス: 1票検出後 DEBOUNCE_SEC 秒間は同じ選択肢を無視する
+        # デバウンス兼自己ループバック抑制: 検出または送信から DEBOUNCE_SEC 秒間は同じ選択肢を無視する
         DEBOUNCE_SEC = 0.8
-        last_detected_at: dict[int, float] = {}
+        last_accepted_at: dict[int, float] = {}
 
-        chunk_count = 0
         try:
             while self._running:
                 try:
@@ -218,22 +204,20 @@ class AudioVoteNetwork:
                 except OSError as e:
                     logger.warning("_listen: stream.read OSError: %s", e)
                     continue
-                chunk_count += 1
-                # 100チャンクごとに生存確認ログ（約9秒ごと）
-                if chunk_count % 100 == 0:
-                    logger.debug("_listen: 稼働中 chunk_count=%d", chunk_count)
                 choice = _detect_choice(data)
                 if choice is not None:
                     now = time.monotonic()
-                    if now - last_detected_at.get(choice, 0.0) < DEBOUNCE_SEC:
-                        logger.debug("_listen: デバウンスで無視 choice=%d", choice)
+                    last = max(
+                        last_accepted_at.get(choice, 0.0),
+                        self._last_sent_at.get(choice, 0.0),
+                    )
+                    if now - last < DEBOUNCE_SEC:
                         continue
-                    last_detected_at[choice] = now
+                    last_accepted_at[choice] = now
                     with self._lock:
                         self._votes[choice] += 1
-                    logger.info("_listen: 投票カウント choice=%d votes=%s", choice, dict(self._votes))
+                    logger.info("audio vote: choice=%d votes=%s", choice, dict(self._votes))
                     self._on_update(Counter(self._votes))
         finally:
             stream.stop_stream()
             stream.close()
-            logger.info("_listen: ストリームクローズ")
