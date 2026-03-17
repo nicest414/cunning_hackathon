@@ -87,6 +87,53 @@ class AbstractKeyboardLEDNotifier(ABC):
         """実行中のプロトコルをキャンセルし、LEDをリセットする。"""
         self._cancel_event.set()
 
+    def notify_accepted(self) -> None:
+        """クリップボード置換のリクエストを受理したことを通知する（1回点灯）。"""
+        if not self._lock.acquire(blocking=False):
+            return
+
+        self._cancel_event.clear()
+        self._running = True
+
+        def _run() -> None:
+            try:
+                self.set_led(True)
+                if self._sleep(0.5):
+                    return
+                self.set_led(False)
+            finally:
+                self.reset()
+                self._running = False
+                self._lock.release()
+
+        t = threading.Thread(target=_run, daemon=True, name="stealth-led-accept")
+        t.start()
+
+    def notify_ready(self) -> None:
+        """クリップボード置換の準備が完了したことを通知する（2回短く点滅）。"""
+        if not self._lock.acquire(blocking=False):
+            return
+
+        self._cancel_event.clear()
+        self._running = True
+
+        def _run() -> None:
+            try:
+                for _ in range(2):
+                    self.set_led(True)
+                    if self._sleep(0.1):
+                        return
+                    self.set_led(False)
+                    if self._sleep(0.1):
+                        return
+            finally:
+                self.reset()
+                self._running = False
+                self._lock.release()
+
+        t = threading.Thread(target=_run, daemon=True, name="stealth-led-ready")
+        t.start()
+
     # ---- 内部実装 ----
 
     def _sleep(self, seconds: float) -> bool:
