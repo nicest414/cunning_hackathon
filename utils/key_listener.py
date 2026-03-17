@@ -41,15 +41,45 @@ class KeyListener:
         self._listener: keyboard.Listener | None = None
 
     def start(self) -> None:
-        """pynput リスナーをバックグラウンドスレッドで起動する。"""
+        """pynput リスナーをバックグラウンドスレッドで起動する。ウォッチドッグも起動。"""
         _print_mac_warning()
-        self._listener = keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release,
-        )
-        self._listener.start()
+        self._stopped = False
+        self._start_listener()
+        self._watchdog_thread = threading.Thread(target=self._watchdog, daemon=True)
+        self._watchdog_thread.start()
+
+    def _start_listener(self) -> None:
+        """リスナーを（再）起動する。"""
+        try:
+            if self._listener:
+                try:
+                    self._listener.stop()
+                except Exception:
+                    pass
+            self._pressed.clear()
+            self._listener = keyboard.Listener(
+                on_press=self._on_press,
+                on_release=self._on_release,
+                suppress=False,
+            )
+            self._listener.start()
+            print("[KeyListener] リスナーを起動しました。")
+        except Exception as e:
+            print(f"[KeyListener] リスナー起動失敗: {e}")
+
+    def _watchdog(self) -> None:
+        """リスナーが死んでいたら自動で再起動するウォッチドッグ。"""
+        import time
+        while not self._stopped:
+            time.sleep(1.0)
+            if self._stopped:
+                break
+            if self._listener is None or not self._listener.is_alive():
+                print("[KeyListener] リスナーが停止を検知 → 再起動します。")
+                self._start_listener()
 
     def stop(self) -> None:
+        self._stopped = True
         if self._listener:
             self._listener.stop()
             self._listener = None
@@ -57,11 +87,17 @@ class KeyListener:
     # --- 内部処理 ---
 
     def _on_press(self, key) -> None:
-        self._pressed.add(key)
-        self._check_hotkeys()
+        try:
+            self._pressed.add(key)
+            self._check_hotkeys()
+        except Exception as e:
+            print(f"[KeyListener] on_press エラー: {e}")
 
     def _on_release(self, key) -> None:
-        self._pressed.discard(key)
+        try:
+            self._pressed.discard(key)
+        except Exception as e:
+            print(f"[KeyListener] on_release エラー: {e}")
 
     # macOS ANSI 仮想キーコード（Option 修飾時も変わらない）
     _MAC_NUM_VK = {1: 18, 2: 19, 3: 20, 4: 21}

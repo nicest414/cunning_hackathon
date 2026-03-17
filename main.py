@@ -54,6 +54,7 @@ def main() -> None:
 
     def _do_ai_answer() -> None:
         """スクリーンキャプチャ → Gemini に問い合わせ (別スレッドで実行して UI フリーズを防ぐ)。"""
+        _notifier.notify_accepted()  # 受理シグナル: 1回点灯
         def _task():
             try:
                 img = capture.capture_screen()
