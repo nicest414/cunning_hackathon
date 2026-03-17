@@ -10,6 +10,7 @@
 受信: pyaudio でマイク入力を常時監視し、FFT でピーク周波数を検出。
 """
 
+import logging
 import threading
 from collections import Counter
 from typing import Callable
@@ -21,6 +22,11 @@ try:
 except ImportError:
     _AVAILABLE = False
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="[%(asctime)s][%(name)s][%(levelname)s] %(message)s",
+)
 
 SAMPLE_RATE = 44100
 TONE_DURATION = 0.3        # 送信トーン長（秒）
@@ -39,6 +45,7 @@ _CHOICE_BY_FREQ = {v: k for k, v in FREQ_MAP.items()}
 
 def is_available() -> bool:
     """pyaudio と numpy が利用可能かどうかを返す。"""
+    logger.info("is_available() called: _AVAILABLE=%s", _AVAILABLE)
     return _AVAILABLE
 
 
@@ -55,11 +62,31 @@ def _detect_choice(data: bytes) -> int | None:
     spectrum = np.abs(np.fft.rfft(samples))
     freqs = np.fft.rfftfreq(len(samples), d=1.0 / SAMPLE_RATE)
 
+    # 全体のピーク（デバッグ用: 低周波ノイズに引っ張られやすい）
+    global_peak_idx = int(np.argmax(spectrum))
+    global_peak_freq = float(freqs[global_peak_idx])
+    global_peak_amp = float(spectrum[global_peak_idx])
+
+    # 各ターゲット周波数でのスペクトル振幅をログ出力
+    target_amps = {}
+    for choice_freq in _CHOICE_BY_FREQ:
+        idx = int(round(choice_freq / (SAMPLE_RATE / len(samples))))
+        idx = max(0, min(idx, len(spectrum) - 1))
+        target_amps[choice_freq] = float(spectrum[idx])
+
+    logger.debug(
+        "FFT global_peak=%.1f Hz (amp=%.1f) | target_amps=%s",
+        global_peak_freq,
+        global_peak_amp,
+        {f"{f}Hz": f"{a:.1f}" for f, a in target_amps.items()},
+    )
+
     peak_idx = int(np.argmax(spectrum))
     peak_freq = float(freqs[peak_idx])
 
     for choice_freq, choice in _CHOICE_BY_FREQ.items():
         if abs(peak_freq - choice_freq) <= FREQ_TOLERANCE:
+            logger.info("DETECTED choice=%d (freq=%.1f Hz)", choice, peak_freq)
             return choice
     return None
 
@@ -81,8 +108,16 @@ class AudioVoteNetwork:
 
     def start(self) -> None:
         if not _AVAILABLE:
+            logger.warning("AudioVoteNetwork: pyaudio/numpy が未インストールのため無効化")
             return
         self._pa = pyaudio.PyAudio()
+        logger.info("AudioVoteNetwork: PyAudio 初期化完了 (デバイス数=%d)", self._pa.get_device_count())
+        for i in range(self._pa.get_device_count()):
+            info = self._pa.get_device_info_by_index(i)
+            logger.info(
+                "  device[%d]: name=%r in_ch=%d out_ch=%d sr=%s",
+                i, info["name"], info["maxInputChannels"], info["maxOutputChannels"], info["defaultSampleRate"],
+            )
         self._running = True
         self._thread = threading.Thread(target=self._listen, daemon=True)
         self._thread.start()
@@ -99,9 +134,12 @@ class AudioVoteNetwork:
     def send_vote(self, choice: int) -> None:
         """指定した選択肢（1〜4）のトーンをスピーカーから送信し、ローカルにも集計する。"""
         if not _AVAILABLE or choice not in FREQ_MAP:
+            logger.warning("send_vote: 無効 (available=%s, choice=%d)", _AVAILABLE, choice)
             return
 
-        tone = _generate_tone(FREQ_MAP[choice])
+        freq = FREQ_MAP[choice]
+        tone = _generate_tone(freq)
+        logger.info("send_vote: choice=%d freq=%d Hz tone_bytes=%d", choice, freq, len(tone))
 
         def _play() -> None:
             pa = pyaudio.PyAudio()
@@ -115,6 +153,9 @@ class AudioVoteNetwork:
                 stream.write(tone)
                 stream.stop_stream()
                 stream.close()
+                logger.info("send_vote: 再生完了 choice=%d", choice)
+            except Exception as e:
+                logger.error("send_vote: 再生エラー: %s", e)
             finally:
                 pa.terminate()
 
@@ -141,21 +182,31 @@ class AudioVoteNetwork:
                 input=True,
                 frames_per_buffer=CHUNK_SIZE,
             )
+            logger.info("_listen: マイクストリームオープン成功 (SAMPLE_RATE=%d, CHUNK_SIZE=%d)", SAMPLE_RATE, CHUNK_SIZE)
         except Exception as e:
+            logger.error("_listen: マイクのオープンに失敗しました: %s", e)
             print(f"[AudioVoteNetwork] マイクのオープンに失敗しました: {e}")
             return
 
+        chunk_count = 0
         try:
             while self._running:
                 try:
                     data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-                except OSError:
+                except OSError as e:
+                    logger.warning("_listen: stream.read OSError: %s", e)
                     continue
+                chunk_count += 1
+                # 100チャンクごとに生存確認ログ（約9秒ごと）
+                if chunk_count % 100 == 0:
+                    logger.debug("_listen: 稼働中 chunk_count=%d", chunk_count)
                 choice = _detect_choice(data)
                 if choice is not None:
                     with self._lock:
                         self._votes[choice] += 1
+                    logger.info("_listen: 投票カウント choice=%d votes=%s", choice, dict(self._votes))
                     self._on_update(Counter(self._votes))
         finally:
             stream.stop_stream()
             stream.close()
+            logger.info("_listen: ストリームクローズ")
