@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QApplication
 
 from core import ai_client, capture, credentials
 from core.network import VoteNetwork
+from core.audio_network import AudioVoteNetwork
 from core.stealth_notifier import create_notifier
 from ui.apology_window import ApologyWindow
 from ui.overlay_window import OverlayWindow
@@ -61,6 +62,8 @@ def main() -> None:
     bridge = _Bridge()
     network = VoteNetwork(on_update=lambda c: bridge.votes_updated.emit(c))
     network.start()
+    audio_network = AudioVoteNetwork(on_update=lambda c: bridge.votes_updated.emit(c))
+    audio_network.start()
 
     # --- シグナル接続 ---
 
@@ -92,6 +95,7 @@ def main() -> None:
 
     def _do_vote(choice: int) -> None:
         network.send_vote(choice)
+        audio_network.send_vote(choice)
 
     bridge.vote_cast.connect(_do_vote)
     bridge.votes_updated.connect(overlay.show_votes)
@@ -100,6 +104,7 @@ def main() -> None:
         overlay.hide_all()
         apology.apologize()
         network.reset()
+        audio_network.reset()
 
     bridge.panic_requested.connect(_do_panic)
 
@@ -169,6 +174,10 @@ def main() -> None:
         pass
     try:
         network.stop()
+    except Exception:
+        pass
+    try:
+        audio_network.stop()
     except Exception:
         pass
     try:
