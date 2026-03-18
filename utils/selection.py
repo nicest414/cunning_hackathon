@@ -88,6 +88,11 @@ def _get_selected_text_windows() -> str:
     import time
     import subprocess
 
+    # PyInstaller console=False ビルドでは subprocess がコンソールウィンドウを
+    # 生成してフォーカスを奪い、直後の Ctrl+C が対象アプリに届かなくなる。
+    # CREATE_NO_WINDOW を指定してコンソールウィンドウの生成を抑止する。
+    _NO_WIN = subprocess.CREATE_NO_WINDOW
+
     try:
         from pynput.keyboard import Controller, Key
 
@@ -95,11 +100,12 @@ def _get_selected_text_windows() -> str:
         result = subprocess.run(
             ["powershell", "-command", "Get-Clipboard"],
             capture_output=True, text=True, timeout=2,
+            creationflags=_NO_WIN,
         )
         original = result.stdout.rstrip("\n") if result.returncode == 0 else ""
 
         # クリップボードを一時的にクリアして Ctrl+C を送信
-        subprocess.run(["clip"], input="", text=True, timeout=1)
+        subprocess.run(["clip"], input="", text=True, timeout=1, creationflags=_NO_WIN)
         selected = ""
         try:
             # ホットキー押下直後は Shift が残っていることがあるため、少し待って競合を避ける
@@ -129,6 +135,7 @@ def _get_selected_text_windows() -> str:
                 result = subprocess.run(
                     ["powershell", "-command", "Get-Clipboard"],
                     capture_output=True, text=True, timeout=2,
+                    creationflags=_NO_WIN,
                 )
                 selected = result.stdout.rstrip("\r\n") if result.returncode == 0 else ""
                 if selected:
@@ -139,7 +146,7 @@ def _get_selected_text_windows() -> str:
                 time.sleep(_WINDOWS_CLIPBOARD_SETTLE_SEC)
         finally:
             # 例外が起きても必ずクリップボードを元に戻す
-            subprocess.run(["clip"], input=original, text=True, timeout=1)
+            subprocess.run(["clip"], input=original, text=True, timeout=1, creationflags=_NO_WIN)
 
         return selected
     except Exception as e:
