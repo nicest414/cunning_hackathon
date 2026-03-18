@@ -12,6 +12,9 @@ def _build_pynput_stub():
     class _Key:
         cmd = "cmd"
         ctrl = "ctrl"
+        shift = "shift"
+        shift_l = "shift_l"
+        shift_r = "shift_r"
 
     keyboard_mod.Key = _Key
     keyboard_mod.Controller = MagicMock
@@ -169,6 +172,72 @@ class TestGetSelectedTextDispatch(unittest.TestCase):
             with patch.object(sel, "_IS_MAC", False):
                 result = sel.get_selected_text()
         self.assertEqual(result, "")
+
+
+class TestGetSelectedTextWindows(unittest.TestCase):
+    def setUp(self):
+        self.pynput_mod, self.keyboard_mod = _build_pynput_stub()
+        sys.modules["pynput"] = self.pynput_mod
+        sys.modules["pynput.keyboard"] = self.keyboard_mod
+        sys.modules.pop("utils.selection", None)
+
+    def tearDown(self):
+        sys.modules.pop("utils.selection", None)
+        sys.modules.pop("pynput", None)
+        sys.modules.pop("pynput.keyboard", None)
+
+    @patch("platform.system", return_value="Windows")
+    def test_returns_selected_text_on_success(self, _mock_platform):
+        """正常系: Windows で選択テキストが取得できる。"""
+        import utils.selection as sel
+
+        fake_keyboard = MagicMock()
+        mock_run = MagicMock(side_effect=[
+            MagicMock(returncode=0, stdout="original\n"),  # Get-Clipboard (退避)
+            MagicMock(returncode=0),                       # clip (クリア)
+            MagicMock(returncode=0, stdout="hello\n"),     # Get-Clipboard (取得)
+            MagicMock(returncode=0),                       # clip (復元)
+        ])
+
+        with patch("subprocess.run", mock_run), \
+             patch("time.sleep") as mock_sleep, \
+             patch("pynput.keyboard.Controller", return_value=fake_keyboard):
+            result = sel._get_selected_text_windows()
+
+        self.assertEqual(result, "hello")
+        fake_keyboard.press.assert_has_calls([call("ctrl"), call("c")])
+        fake_keyboard.release.assert_has_calls(
+            [call("shift"), call("shift_l"), call("shift_r"), call("c"), call("ctrl")]
+        )
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    @patch("platform.system", return_value="Windows")
+    def test_clipboard_restored_on_keyboard_error(self, _mock_platform):
+        """キーボード送信失敗時でも clip で復元が呼ばれる。"""
+        import utils.selection as sel
+
+        restore_called = {"value": False}
+
+        def _fake_run(cmd, **kwargs):
+            if cmd == ["powershell", "-command", "Get-Clipboard"]:
+                return MagicMock(returncode=0, stdout="original\n")
+            if cmd == ["clip"] and kwargs.get("input") == "":
+                return MagicMock(returncode=0)
+            if cmd == ["clip"] and kwargs.get("input") == "original":
+                restore_called["value"] = True
+                return MagicMock(returncode=0)
+            raise RuntimeError("unexpected command")
+
+        broken_keyboard = MagicMock()
+        broken_keyboard.press.side_effect = RuntimeError("keyboard error")
+
+        with patch("subprocess.run", side_effect=_fake_run), \
+             patch("time.sleep"), \
+             patch("pynput.keyboard.Controller", return_value=broken_keyboard):
+            result = sel._get_selected_text_windows()
+
+        self.assertEqual(result, "")
+        self.assertTrue(restore_called["value"], "クリップボード復元が呼ばれていない")
 
 
 if __name__ == "__main__":
