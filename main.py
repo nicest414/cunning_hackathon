@@ -76,6 +76,7 @@ class _Bridge(QObject):
     votes_updated = pyqtSignal(object)  # Counter
     copy_hijack_requested = pyqtSignal()
     clipboard_replace = pyqtSignal(str)
+    question_shift = pyqtSignal(int)
 
 
 def main() -> None:
@@ -150,6 +151,12 @@ def main() -> None:
     bridge.vote_cast.connect(_do_vote)
     bridge.votes_updated.connect(overlay.show_votes)
 
+    def _do_question_shift(delta: int) -> None:
+        new_question = audio_network.shift_question(delta)
+        print(f"[AudioVote] 現在の問題番号: {new_question}")
+
+    bridge.question_shift.connect(_do_question_shift)
+
     def _do_panic() -> None:
         overlay.hide_all()
         apology.apologize()
@@ -191,6 +198,7 @@ def main() -> None:
         on_panic=bridge.panic_requested.emit,
         on_quit=app.quit,
         on_copy_hijack=bridge.copy_hijack_requested.emit,
+        on_question_shift=bridge.question_shift.emit,
     )
     listener.start()
 
@@ -206,6 +214,7 @@ def main() -> None:
     print(f"  AI回答           : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
     print(f"  クリップボード置換: Cmd+Shift+C      (Win/Linux: Ctrl+Shift+C)")
     print(f"  多数決           : Option+1〜4      (Win/Linux: Alt+1〜4)")
+    print(f"  問題番号変更     : Option+↑/↓       (Win/Linux: Alt+↑/↓)")
     print(f"  緊急謝罪         : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
     print(f"  終了             : Cmd+Shift+X     (Win/Linux: Ctrl+Shift+X)")
 

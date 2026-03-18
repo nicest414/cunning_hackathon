@@ -28,6 +28,8 @@ def _build_pynput_stub():
         shift = _KeyItem("shift")
         alt = _KeyItem("alt")
         space = _KeyItem("space")
+        up = _KeyItem("up")
+        down = _KeyItem("down")
 
     class _KeyCode:
         def __init__(self, char=None):
@@ -72,13 +74,14 @@ class TestKeyListener(unittest.TestCase):
         sys.modules.pop("pynput.keyboard", None)
 
     def _make_listener(self, on_ai_answer=None, on_vote=None, on_panic=None,
-                       on_copy_hijack=None, on_quit=None):
+                       on_copy_hijack=None, on_quit=None, on_question_shift=None):
         return self.kl_mod.KeyListener(
             on_ai_answer=on_ai_answer or MagicMock(),
             on_vote=on_vote or MagicMock(),
             on_panic=on_panic or MagicMock(),
             on_copy_hijack=on_copy_hijack or MagicMock(),
             on_quit=on_quit or MagicMock(),
+            on_question_shift=on_question_shift or MagicMock(),
         )
 
     # ------------------------------------------------------------------
@@ -198,6 +201,28 @@ class TestKeyListener(unittest.TestCase):
         on_ai_answer.assert_not_called()
         on_vote.assert_not_called()
         on_panic.assert_not_called()
+
+    def test_hotkey_question_shift_up_fires_callback(self):
+        """Alt+↑ で on_question_shift(+1) が呼ばれる。"""
+        on_question_shift = MagicMock()
+        kl = self._make_listener(on_question_shift=on_question_shift)
+
+        kl._pressed = {self.Key.alt, self.Key.up}
+        kl._check_hotkeys()
+
+        import time; time.sleep(0.05)
+        on_question_shift.assert_called_once_with(1)
+
+    def test_hotkey_question_shift_down_fires_callback(self):
+        """Alt+↓ で on_question_shift(-1) が呼ばれる。"""
+        on_question_shift = MagicMock()
+        kl = self._make_listener(on_question_shift=on_question_shift)
+
+        kl._pressed = {self.Key.alt, self.Key.down}
+        kl._check_hotkeys()
+
+        import time; time.sleep(0.05)
+        on_question_shift.assert_called_once_with(-1)
 
 
 if __name__ == "__main__":

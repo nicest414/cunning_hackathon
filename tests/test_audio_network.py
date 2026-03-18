@@ -1,190 +1,175 @@
-"""Unit tests for core/audio_network.py — pyaudio をモックして実デバイスを使わない。"""
+"""Unit tests for core/audio_network.py - ggwave/pyaudio はモック化する。"""
+
 import importlib
-import threading
-import time
+import types
 import unittest
 from collections import Counter
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 
-
-def _make_pcm(frequency: int, duration: float = 0.1, sample_rate: int = 44100) -> bytes:
-    """テスト用: 指定周波数の純粋なサイン波 PCM バイト列を生成する。"""
-    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    wave = (np.sin(2 * np.pi * frequency * t) * 32767).astype(np.int16)
-    return wave.tobytes()
-
-
-def _make_silence(duration: float = 0.1, sample_rate: int = 44100) -> bytes:
-    """テスト用: 無音 PCM バイト列を生成する。"""
-    n = int(sample_rate * duration)
-    return (np.zeros(n, dtype=np.int16)).tobytes()
-
-
-class TestDetectChoice(unittest.TestCase):
+class TestParseVotePayload(unittest.TestCase):
     def setUp(self):
-        import importlib
         import core.audio_network
         importlib.reload(core.audio_network)
 
-    def test_detect_known_frequency_returns_correct_choice(self):
-        """各 FREQ_MAP の周波数トーンを与えると対応する選択肢が返る。"""
-        from core.audio_network import _detect_choice, FREQ_MAP, CHUNK_SIZE, SAMPLE_RATE
+    def test_parse_valid_payload(self):
+        """有効な q/c ペイロードを正しく復元できる。"""
+        from core.audio_network import _parse_vote_payload
 
-        for choice, freq in FREQ_MAP.items():
-            # CHUNK_SIZE サンプル分の純音を生成
-            duration = CHUNK_SIZE / SAMPLE_RATE
-            pcm = _make_pcm(freq, duration=duration, sample_rate=SAMPLE_RATE)
-            result = _detect_choice(pcm)
-            self.assertEqual(
-                result, choice,
-                f"freq={freq}Hz の純音で choice={choice} が検出されるべきだが {result} が返った",
-            )
+        self.assertEqual(_parse_vote_payload('{"q":2,"c":4}'), (2, 4))
 
-    def test_detect_silence_returns_none(self):
-        """無音入力では None を返す（ZeroDivisionError も起きない）。"""
-        from core.audio_network import _detect_choice, CHUNK_SIZE, SAMPLE_RATE
+    def test_parse_invalid_payload_returns_none(self):
+        """不正ペイロードは None を返す。"""
+        from core.audio_network import _parse_vote_payload
 
-        duration = CHUNK_SIZE / SAMPLE_RATE
-        pcm = _make_silence(duration=duration, sample_rate=SAMPLE_RATE)
-        result = _detect_choice(pcm)
-        self.assertIsNone(result)
-
-    def test_detect_low_freq_noise_returns_none(self):
-        """低周波ノイズ（例: 500 Hz）では None を返す（誤検出しない）。"""
-        from core.audio_network import _detect_choice, CHUNK_SIZE, SAMPLE_RATE
-
-        duration = CHUNK_SIZE / SAMPLE_RATE
-        pcm = _make_pcm(500, duration=duration, sample_rate=SAMPLE_RATE)
-        result = _detect_choice(pcm)
-        self.assertIsNone(result)
-
-    def test_noise_floor_zero_does_not_raise(self):
-        """noise_floor が 0 になりうる無音入力でも ZeroDivisionError が起きない。"""
-        from core.audio_network import _detect_choice
-
-        # 完全ゼロバイト（all-zero samples）
-        pcm = bytes(4096 * 2)  # 4096 int16 samples
-        try:
-            _detect_choice(pcm)
-        except ZeroDivisionError:
-            self.fail("_detect_choice() が ZeroDivisionError を送出した")
+        self.assertIsNone(_parse_vote_payload('{"q":0,"c":1}'))
+        self.assertIsNone(_parse_vote_payload('{"q":1,"c":9}'))
+        self.assertIsNone(_parse_vote_payload('not-json'))
 
 
 class TestAudioVoteNetwork(unittest.TestCase):
-    def _make_network(self, on_update=None):
-        """pyaudio をモックした AudioVoteNetwork を返す。"""
-        if on_update is None:
-            on_update = MagicMock()
-
-        mock_pa = MagicMock()
-        with patch("core.audio_network._AVAILABLE", True), \
-             patch("core.audio_network.pyaudio") as mock_pyaudio:
-            mock_pyaudio.PyAudio.return_value = mock_pa
-            mock_pyaudio.paInt16 = 8  # 実 pyaudio の定数と同値
-            from core.audio_network import AudioVoteNetwork
-            net = AudioVoteNetwork(on_update=on_update)
-
-        return net, mock_pa, on_update
-
     def setUp(self):
         import core.audio_network
         importlib.reload(core.audio_network)
 
-    def test_send_vote_updates_local_counter(self):
-        """send_vote はローカルの _votes をすぐに加算し on_update を呼ぶ。"""
+    def test_send_vote_encodes_qc_payload_and_updates_local_counter(self):
+        """send_vote() が q/c 形式でエンコードし、ローカル票を更新する。"""
         on_update = MagicMock()
 
         with patch("core.audio_network._AVAILABLE", True), \
+             patch("core.audio_network.ggwave") as mock_ggwave, \
+               patch("core.audio_network._BACKEND", "ggwave"), \
              patch("core.audio_network.pyaudio") as mock_pyaudio, \
              patch("core.audio_network.threading.Thread") as mock_thread:
+            mock_ggwave.encode.return_value = b"\x00" * 400
+            mock_pyaudio.paFloat32 = 1
             mock_thread.return_value = MagicMock()
+
+            from core.audio_network import AudioVoteNetwork
+            net = AudioVoteNetwork(on_update=on_update)
+            net.send_vote(3)
+
+        encoded_text = mock_ggwave.encode.call_args.args[0]
+        self.assertEqual(encoded_text, '{"q":1,"c":3}')
+        on_update.assert_called_once()
+        votes = on_update.call_args.args[0]
+        self.assertEqual(votes[3], 1)
+
+    def test_send_vote_uses_raw_encode_when_encode_is_missing(self):
+        """pyggwave 互換: encode が無い場合は raw__encode を使う。"""
+        on_update = MagicMock()
+
+        fake_protocol = types.SimpleNamespace(ULTRASOUND_FASTEST=types.SimpleNamespace(value=5))
+        fake_ggwave = types.SimpleNamespace(
+            Protocol=fake_protocol,
+            raw__encode=MagicMock(return_value=b"\x00" * 100),
+            raw__decode=MagicMock(return_value=None),
+            raw__init=MagicMock(return_value=1),
+            raw__free=MagicMock(),
+        )
+
+        with patch("core.audio_network._AVAILABLE", True), \
+             patch("core.audio_network.ggwave", fake_ggwave), \
+             patch("core.audio_network._BACKEND", "pyggwave"), \
+             patch("core.audio_network.pyaudio") as mock_pyaudio, \
+             patch("core.audio_network.threading.Thread") as mock_thread:
             mock_pyaudio.paInt16 = 8
+            mock_thread.return_value = MagicMock()
+
+            from core.audio_network import AudioVoteNetwork
+            net = AudioVoteNetwork(on_update=on_update)
+            net.send_vote(4)
+
+        fake_ggwave.raw__encode.assert_called_once()
+        encoded_text = fake_ggwave.raw__encode.call_args.args[0]
+        self.assertEqual(encoded_text, '{"q":1,"c":4}')
+
+    def test_send_vote_falls_back_when_encode_signature_differs(self):
+        """ggwave 互換: encode の実装差で失敗しても別シグネチャへフォールバックする。"""
+        on_update = MagicMock()
+
+        with patch("core.audio_network._AVAILABLE", True), \
+             patch("core.audio_network.ggwave") as mock_ggwave, \
+             patch("core.audio_network._BACKEND", "ggwave"), \
+             patch("core.audio_network.pyaudio") as mock_pyaudio, \
+             patch("core.audio_network.threading.Thread") as mock_thread:
+            mock_ggwave.encode.side_effect = [
+                Exception("'dict' object has no attribute 'params'"),
+                b"\x00" * 200,
+            ]
+            mock_pyaudio.paFloat32 = 1
+            mock_thread.return_value = MagicMock()
+
             from core.audio_network import AudioVoteNetwork
             net = AudioVoteNetwork(on_update=on_update)
             net.send_vote(2)
 
-        self.assertEqual(net._votes[2], 1)
+        self.assertEqual(mock_ggwave.encode.call_count, 2)
+        # 1回目はキーワード引数、2回目は位置引数フォールバック
+        self.assertEqual(mock_ggwave.encode.call_args_list[1].args[0], '{"q":1,"c":2}')
         on_update.assert_called_once()
-        args, _ = on_update.call_args
-        self.assertEqual(args[0][2], 1)
 
-    def test_send_vote_records_last_sent_at(self):
-        """send_vote 後、_last_sent_at に対象 choice の時刻が記録される。"""
-        with patch("core.audio_network._AVAILABLE", True), \
-             patch("core.audio_network.pyaudio") as mock_pyaudio, \
-             patch("core.audio_network.threading.Thread") as mock_thread:
-            mock_thread.return_value = MagicMock()
-            mock_pyaudio.paInt16 = 8
+    def test_shift_question_changes_current_question_and_emits_counter(self):
+        """shift_question() で問題番号を変更し、対象問題の票を通知する。"""
+        on_update = MagicMock()
+
+        with patch("core.audio_network._AVAILABLE", False):
+            from core.audio_network import AudioVoteNetwork
+            net = AudioVoteNetwork(on_update=on_update)
+
+        net._votes_by_question[2] = Counter({1: 2, 4: 1})
+        new_q = net.shift_question(+1)
+
+        self.assertEqual(new_q, 2)
+        on_update.assert_called_once()
+        emitted = on_update.call_args.args[0]
+        self.assertEqual(emitted[1], 2)
+        self.assertEqual(emitted[4], 1)
+
+    def test_shift_question_does_not_go_below_one(self):
+        """問題番号は 1 未満にならない。"""
+        with patch("core.audio_network._AVAILABLE", False):
             from core.audio_network import AudioVoteNetwork
             net = AudioVoteNetwork(on_update=MagicMock())
-            before = time.monotonic()
-            net.send_vote(3)
-            after = time.monotonic()
 
-        self.assertIn(3, net._last_sent_at)
-        self.assertGreaterEqual(net._last_sent_at[3], before)
-        self.assertLessEqual(net._last_sent_at[3], after)
+        self.assertEqual(net.shift_question(-1), 1)
 
-    def test_self_loopback_suppression_in_listen(self):
-        """_listen() は送信直後（DEBOUNCE_SEC 内）に同一 choice を検出しても集計しない。"""
-        from core.audio_network import FREQ_MAP, CHUNK_SIZE, SAMPLE_RATE
-
+    def test_listen_updates_current_question_votes_on_receive(self):
+        """受信票が現在問題なら on_update が呼ばれる。"""
         on_update = MagicMock()
-        call_count = [0]
-
-        # choice=1 (17000Hz) のチャンク PCM を生成
-        duration = CHUNK_SIZE / SAMPLE_RATE
-        tone_pcm = _make_pcm(FREQ_MAP[1], duration=duration, sample_rate=SAMPLE_RATE)
 
         with patch("core.audio_network._AVAILABLE", True), \
+             patch("core.audio_network.ggwave") as mock_ggwave, \
              patch("core.audio_network.pyaudio") as mock_pyaudio:
             mock_pyaudio.paInt16 = 8
             mock_pa = MagicMock()
+            mock_stream = MagicMock()
+            mock_pa.open.return_value = mock_stream
             mock_pyaudio.PyAudio.return_value = mock_pa
 
-            def controlled_read(_size, **kw):
-                call_count[0] += 1
-                if call_count[0] == 1:
-                    return tone_pcm
+            # 1回だけPCMを返し、その次でループを終える
+            calls = {"n": 0}
+
+            def _read(*args, **kwargs):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    return b"pcm"
                 net._running = False
-                raise OSError("eof")
+                raise Exception("stop")
 
-            mock_stream = MagicMock()
-            mock_stream.read.side_effect = controlled_read
-            mock_pa.open.return_value = mock_stream
+            mock_stream.read.side_effect = _read
+            mock_ggwave.decode.side_effect = [b'{"q":1,"c":2}']
 
             from core.audio_network import AudioVoteNetwork
             net = AudioVoteNetwork(on_update=on_update)
+            net._pa = mock_pa
+            net._decoder = object()
+            net._running = True
+            net._listen()
 
-        # send_vote で _last_sent_at を "今" に設定してから _listen を呼ぶ
-        net._last_sent_at[1] = time.monotonic()
-        net._running = True
-        net._pa = mock_pa
-        net._listen()
-
-        # ループバック抑制により votes は 0 のまま
-        self.assertEqual(net._votes[1], 0)
-
-    def test_reset_clears_votes(self):
-        """reset() で _votes がクリアされ on_update が空 Counter で呼ばれる。"""
-        on_update = MagicMock()
-        with patch("core.audio_network._AVAILABLE", True), \
-             patch("core.audio_network.pyaudio") as mock_pyaudio, \
-             patch("core.audio_network.threading.Thread") as mock_thread:
-            mock_thread.return_value = MagicMock()
-            mock_pyaudio.paInt16 = 8
-            from core.audio_network import AudioVoteNetwork
-            net = AudioVoteNetwork(on_update=on_update)
-            net.send_vote(1)
-            on_update.reset_mock()
-            net.reset()
-
-        self.assertEqual(len(net._votes), 0)
         on_update.assert_called_once()
-        args, _ = on_update.call_args
-        self.assertEqual(len(args[0]), 0)
+        emitted = on_update.call_args.args[0]
+        self.assertEqual(emitted[2], 1)
 
 
 if __name__ == "__main__":
