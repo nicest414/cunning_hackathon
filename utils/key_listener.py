@@ -1,10 +1,26 @@
 """グローバルホットキー登録・管理モジュール (pynput ベース)。"""
+import logging
+import os
 import platform
 import threading
 from typing import Callable
 
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
+
+# ビルド版 (console=False) でもエラーを確認できるようファイルにログを出力する
+def _setup_file_logger() -> logging.Logger:
+    log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "InputMonitor")
+    os.makedirs(log_dir, exist_ok=True)
+    logger = logging.getLogger("KeyListener")
+    if not logger.handlers:
+        handler = logging.FileHandler(os.path.join(log_dir, "key_listener.log"), encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+    return logger
+
+_log = _setup_file_logger()
 
 _IS_MAC = platform.system() == "Darwin"
 
@@ -43,6 +59,7 @@ class KeyListener:
     def start(self) -> None:
         """pynput リスナーをバックグラウンドスレッドで起動する。ウォッチドッグも起動。"""
         _print_mac_warning()
+        _log.info("[KeyListener] start() 呼び出し (platform=%s)", platform.system())
         self._stopped = False
         self._start_listener()
         self._watchdog_thread = threading.Thread(target=self._watchdog, daemon=True)
@@ -63,9 +80,13 @@ class KeyListener:
                 suppress=False,
             )
             self._listener.start()
-            print("[KeyListener] リスナーを起動しました。")
+            msg = "[KeyListener] リスナーを起動しました。"
+            print(msg)
+            _log.info(msg)
         except Exception as e:
-            print(f"[KeyListener] リスナー起動失敗: {e}")
+            msg = f"[KeyListener] リスナー起動失敗: {e}"
+            print(msg)
+            _log.exception(msg)
 
     def _watchdog(self) -> None:
         """リスナーが死んでいたら自動で再起動するウォッチドッグ。"""
@@ -75,7 +96,9 @@ class KeyListener:
             if self._stopped:
                 break
             if self._listener is None or not self._listener.is_alive():
-                print("[KeyListener] リスナーが停止を検知 → 再起動します。")
+                msg = "[KeyListener] リスナーが停止を検知 → 再起動します。"
+                print(msg)
+                _log.warning(msg)
                 self._start_listener()
 
     def stop(self) -> None:
@@ -86,12 +109,19 @@ class KeyListener:
 
     # --- 内部処理 ---
 
+    _first_key_received = False
+
     def _on_press(self, key) -> None:
         try:
+            if not KeyListener._first_key_received:
+                KeyListener._first_key_received = True
+                _log.info("[KeyListener] 最初のキー入力を受信しました（イベントタップ正常）: %s", key)
             self._pressed.add(key)
             self._check_hotkeys()
         except Exception as e:
-            print(f"[KeyListener] on_press エラー: {e}")
+            msg = f"[KeyListener] on_press エラー: {e}"
+            print(msg)
+            _log.exception(msg)
 
     def _on_release(self, key) -> None:
         try:

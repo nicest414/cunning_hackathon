@@ -1,22 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 ROOT = Path(SPECPATH)  # spec ファイルのあるディレクトリ = installer/
 PROJECT_ROOT = ROOT.parent  # プロジェクトルート
 
 block_cipher = None
 
+# pynput のサブモジュール・データ・バイナリを全て収集する
+# （macOS/Windows の動的バックエンドが自動検出されないため）
+_pynput_datas, _pynput_binaries, _pynput_hiddenimports = collect_all('pynput')
+
 a = Analysis(
     [str(PROJECT_ROOT / 'main.py')],
     pathex=[str(PROJECT_ROOT)],
-    binaries=[],
+    binaries=_pynput_binaries,
     datas=[
         # assets/ 以下の画像ファイルを全て同梱する
         (str(PROJECT_ROOT / 'assets' / '*.png'),  'assets'),
         (str(PROJECT_ROOT / 'assets' / '*.jpg'),  'assets'),
-    ],
-    hiddenimports=[
+    ] + _pynput_datas,
+    hiddenimports=_pynput_hiddenimports + [
         # keyring: OS バックエンドを明示的に指定（動的ロードのため自動検出されない）
         'keyring.backends',
         'keyring.backends.macOS',        # macOS Keychain
@@ -24,11 +29,13 @@ a = Analysis(
         'keyring.backends.SecretService', # Linux（念のため）
         'keyring.backends.fail',
         'keyring.backends.null',
-        # pynput: バックエンドの明示（macOS/Windows で分かれる）
-        'pynput.keyboard._darwin',
-        'pynput.keyboard._win32',
-        'pynput.mouse._darwin',
-        'pynput.mouse._win32',
+        # PyObjC: pynput._darwin が依存する macOS フレームワーク
+        # （PyInstaller は動的ロードされる objc モジュールを自動検出できない）
+        'objc',
+        'AppKit',
+        'Quartz',
+        'Quartz.CoreGraphics',
+        'CoreFoundation',
         # google-genai の内部依存
         'google.genai',
         'google.auth',

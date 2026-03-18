@@ -28,6 +28,48 @@ from utils.key_listener import KeyListener
 from utils.selection import get_selected_text
 
 
+def _check_macos_accessibility() -> None:
+    """macOS ビルド版: アクセシビリティ権限を確認し、未付与なら案内ダイアログを表示する。
+
+    pynput のグローバルキーボードフック (CGEventTap) は AXIsProcessTrusted() が
+    True でないと動作しない。ターミナルから実行する場合はターミナルの権限で動くが、
+    .app バンドルとして起動すると .app 自身への権限付与が別途必要になる。
+    """
+    import platform
+    if platform.system() != "Darwin":
+        return
+    try:
+        import ctypes
+        import ctypes.util
+        lib_path = ctypes.util.find_library("ApplicationServices")
+        if not lib_path:
+            return
+        lib = ctypes.cdll.LoadLibrary(lib_path)
+        lib.AXIsProcessTrusted.restype = ctypes.c_bool
+        if lib.AXIsProcessTrusted():
+            return  # 権限あり → 問題なし
+    except Exception:
+        return  # チェック失敗時はスキップ
+
+    # 権限なし → ダイアログで案内してシステム設定を開く
+    import subprocess
+    from PyQt6.QtWidgets import QMessageBox
+    msg = QMessageBox()
+    msg.setWindowTitle("アクセシビリティ権限が必要です")
+    msg.setText(
+        "キーボードショートカットを使用するには\n"
+        "アクセシビリティ権限が必要です。\n\n"
+        "システム設定 > プライバシーとセキュリティ > アクセシビリティ\n"
+        "にこのアプリを追加して、アプリを再起動してください。"
+    )
+    msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+    msg.exec()
+    subprocess.Popen([
+        "open",
+        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+    ])
+
+
 class _Bridge(QObject):
     """キーボードスレッド → Qt メインスレッドへイベントを橋渡しするシグナル定義。"""
     ai_requested = pyqtSignal()
@@ -62,6 +104,8 @@ def main() -> None:
             sys.exit(1)
 
     ai_client.init(api_key)
+
+    _check_macos_accessibility()
 
     _notifier = create_notifier()
 
