@@ -1,5 +1,4 @@
 """アクセシビリティ権限の誘導ダイアログ。"""
-import os
 import sys
 
 from PyQt6.QtCore import Qt
@@ -65,5 +64,17 @@ class AccessibilityDialog(QDialog):
         subprocess.Popen(["open", "-b", "com.apple.systempreferences"])
 
     def _restart(self) -> None:
-        """現プロセスを exec で置き換えて再起動する。"""
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        """macOS の open コマンドで .app バンドルとして再起動する。
+        直接バイナリを起動すると TCC がバンドル ID を認識できず
+        アクセシビリティ権限が失われるため、必ずバンドル経由で起動する。
+        """
+        import subprocess
+        from pathlib import Path
+        exe = Path(sys.executable)
+        app_bundle = exe.parent.parent.parent
+        if app_bundle.suffix == ".app" and app_bundle.exists():
+            subprocess.Popen(["open", str(app_bundle)])
+        else:
+            # 開発環境など .app バンドル外で実行している場合のフォールバック
+            subprocess.Popen([sys.executable] + sys.argv)
+        sys.exit(0)
