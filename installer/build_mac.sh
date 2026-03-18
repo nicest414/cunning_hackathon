@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# .env ファイルが存在すれば読み込む
+if [ -f ".env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ".env"
+  set +a
+fi
+
 APP_NAME="Input Monitor"
 DIST_DIR="dist"
 DMG_NAME="InputMonitor.dmg"
-SIGN_IDENTITY="${CODESIGN_IDENTITY:?'CODESIGN_IDENTITY 環境変数を設定してください (例: export CODESIGN_IDENTITY=\"Apple Development: you@example.com (XXXXXXXXXX)\")'}"
-ENTITLEMENTS="installer/entitlements.plist"
+SIGN_IDENTITY="${CODESIGN_IDENTITY:?'CODESIGN_IDENTITY 環境変数を設定してください (.env または export で)'}"
+¡™£¢¡¢£ENTITLEMENTS="installer/entitlements.plist"
 
 echo "==> .app に署名します..."
 codesign \
