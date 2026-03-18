@@ -68,7 +68,7 @@ exe = EXE(
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
-    entitlements_file=None,
+    entitlements_file=str(ROOT / 'entitlements.plist') if sys.platform == 'darwin' else None,
     # Windows: タスクマネージャーのプロパティ欄に表示されるバージョン情報を偽装
     version=str(PROJECT_ROOT / 'installer' / 'version_info.txt') if sys.platform == 'win32' else None,
 )
@@ -90,7 +90,7 @@ if sys.platform == 'darwin':
         coll,
         name='Input Monitor.app',
         icon=None,               # アイコンがある場合は 'assets/icon.icns' を指定
-        bundle_identifier='com.apple.accessibility.inputmonitor',
+        bundle_identifier='com.systemutil.inputmonitor',
         info_plist={
             # pynput のグローバルフックに必要なアクセシビリティ権限の説明
             'NSAccessibilityUsageDescription':

@@ -21,12 +21,13 @@ from core import ai_client, capture, credentials
 from core.network import VoteNetwork
 from core.audio_network import AudioVoteNetwork
 from core.stealth_notifier import create_notifier
+from ui.accessibility_dialog import AccessibilityDialog
 from ui.apology_window import ApologyWindow
 from ui.key_config_dialog import KeyConfigDialog
 from ui.key_config_prompt import KeyConfigPrompt
 from ui.overlay_window import OverlayWindow
 from ui.setup_dialog import SetupDialog
-from utils import keyconfig
+from utils import accessibility, keyconfig
 from utils.key_listener import KeyListener
 from utils.selection import get_selected_text
 
@@ -66,8 +67,14 @@ def main() -> None:
 
     ai_client.init(api_key)
 
-    # キーコンフィグ設定フロー（ビルド版のみ）
+    # アクセシビリティ権限チェック（ビルド版のみ）
     IS_FROZEN = getattr(sys, "frozen", False)
+    if IS_FROZEN and not accessibility.is_trusted():
+        dlg = AccessibilityDialog()
+        if dlg.exec() != AccessibilityDialog.DialogCode.Accepted:
+            sys.exit(0)
+
+    # キーコンフィグ設定フロー（ビルド版のみ）
     if IS_FROZEN:
         if not keyconfig.config_exists():
             # 初回: そのままキー設定ダイアログを表示

@@ -7,6 +7,8 @@ DMG_NAME="InputMonitor.dmg"
 
 echo "==> .dmg を生成します..."
 
+rm -f "${DIST_DIR}/${DMG_NAME}"
+
 create-dmg \
   --volname "${APP_NAME}" \
   --window-size 540 380 \
