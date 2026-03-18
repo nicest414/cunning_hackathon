@@ -9,7 +9,7 @@ from collections import Counter
 # Activity Monitor (macOS) / タスクマネージャー詳細タブ (Windows) に反映される
 try:
     import setproctitle
-    setproctitle.setproctitle("com.apple.accessibility.element")
+    # setproctitle.setproctitle("com.apple.accessibility.element")
 except ImportError:
     pass
 
@@ -26,6 +26,45 @@ from ui.overlay_window import OverlayWindow
 from ui.setup_dialog import SetupDialog
 from utils.key_listener import KeyListener
 from utils.selection import get_selected_text
+
+
+def _check_macos_accessibility() -> None:
+    """macOS: アクセシビリティ権限を確認してコンソールに案内を出力する（モーダル不使用）。
+
+    権限付与後はアプリの再起動が必要なため、起動時にモーダルを出しても
+    その起動では AXIsProcessTrusted() が False のままになる。
+    代わりにコンソール出力のみ行い、初回は macOS のネイティブダイアログに任せる。
+    """
+    import platform
+    if platform.system() != "Darwin":
+        return
+    try:
+        import ctypes
+        import ctypes.util
+        lib_path = ctypes.util.find_library("ApplicationServices")
+        if not lib_path:
+            return
+        lib = ctypes.cdll.LoadLibrary(lib_path)
+        lib.AXIsProcessTrusted.restype = ctypes.c_bool
+        if lib.AXIsProcessTrusted():
+            return  # 権限あり → 問題なし
+    except Exception:
+        return  # チェック失敗時はスキップ
+
+    # 権限なし → コンソールに案内してシステム設定を開く（ノンブロッキング）
+    import subprocess
+    print(
+        "\n[アクセシビリティ権限が必要です]\n"
+        "  システム設定 > プライバシーとセキュリティ > アクセシビリティ\n"
+        "  にこのアプリを追加してから、アプリを再起動してください。\n"
+    )
+    try:
+        subprocess.Popen([
+            "open",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        ])
+    except Exception:
+        pass  # 案内処理の失敗はアプリ起動を阻害しない
 
 
 class _Bridge(QObject):
@@ -62,6 +101,8 @@ def main() -> None:
             sys.exit(1)
 
     ai_client.init(api_key)
+
+    _check_macos_accessibility()
 
     _notifier = create_notifier()
 

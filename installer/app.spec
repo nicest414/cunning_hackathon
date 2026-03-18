@@ -1,22 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 ROOT = Path(SPECPATH)  # spec ファイルのあるディレクトリ = installer/
 PROJECT_ROOT = ROOT.parent  # プロジェクトルート
 
 block_cipher = None
 
+# pynput のサブモジュール・データ・バイナリを全て収集する
+# （macOS/Windows の動的バックエンドが自動検出されないため）
+_pynput_datas, _pynput_binaries, _pynput_hiddenimports = collect_all('pynput')
+
 a = Analysis(
     [str(PROJECT_ROOT / 'main.py')],
     pathex=[str(PROJECT_ROOT)],
-    binaries=[],
+    binaries=_pynput_binaries,
     datas=[
         # assets/ 以下の画像ファイルを全て同梱する
         (str(PROJECT_ROOT / 'assets' / '*.png'),  'assets'),
         (str(PROJECT_ROOT / 'assets' / '*.jpg'),  'assets'),
-    ],
-    hiddenimports=[
+    ] + _pynput_datas,
+    hiddenimports=_pynput_hiddenimports + [
         # keyring: OS バックエンドを明示的に指定（動的ロードのため自動検出されない）
         'keyring.backends',
         'keyring.backends.macOS',        # macOS Keychain
@@ -24,11 +30,11 @@ a = Analysis(
         'keyring.backends.SecretService', # Linux（念のため）
         'keyring.backends.fail',
         'keyring.backends.null',
-        # pynput: バックエンドの明示（macOS/Windows で分かれる）
-        'pynput.keyboard._darwin',
-        'pynput.keyboard._win32',
-        'pynput.mouse._darwin',
-        'pynput.mouse._win32',
+        # PyObjC: pynput._darwin が依存する macOS フレームワーク
+        # （PyInstaller は動的ロードされる objc モジュールを自動検出できない）
+        # macOS のみで利用可能なため、他 OS でのビルド時は追加しない
+        *(['objc', 'AppKit', 'Quartz', 'Quartz.CoreGraphics', 'CoreFoundation']
+          if sys.platform == 'darwin' else []),
         # google-genai の内部依存
         'google.genai',
         'google.auth',
@@ -67,8 +73,8 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    codesign_identity=os.environ.get('CODESIGN_IDENTITY') or None,
+    entitlements_file=str(ROOT / 'entitlements.plist'),
     # Windows: タスクマネージャーのプロパティ欄に表示されるバージョン情報を偽装
     version=str(PROJECT_ROOT / 'installer' / 'version_info.txt') if sys.platform == 'win32' else None,
 )
@@ -90,7 +96,7 @@ if sys.platform == 'darwin':
         coll,
         name='Input Monitor.app',
         icon=None,               # アイコンがある場合は 'assets/icon.icns' を指定
-        bundle_identifier='com.apple.accessibility.inputmonitor',
+        bundle_identifier='com.cunningapp.inputmonitor',
         info_plist={
             # pynput のグローバルフックに必要なアクセシビリティ権限の説明
             'NSAccessibilityUsageDescription':
@@ -98,7 +104,5 @@ if sys.platform == 'darwin':
             # mss のスクリーンキャプチャに必要な画面収録権限の説明
             'NSScreenCaptureUsageDescription':
                 '画面をキャプチャして AI に送信するために画面収録権限が必要です。',
-            # Dock・メニューバーにアイコンを表示しない（バックグラウンドアプリとして動作）
-            'LSUIElement': True,
         },
     )

@@ -4,6 +4,21 @@ set -euo pipefail
 APP_NAME="Input Monitor"
 DIST_DIR="dist"
 DMG_NAME="InputMonitor.dmg"
+SIGN_IDENTITY="${CODESIGN_IDENTITY:?'CODESIGN_IDENTITY 環境変数を設定してください (例: export CODESIGN_IDENTITY=\"Apple Development: you@example.com (XXXXXXXXXX)\")'}"
+ENTITLEMENTS="installer/entitlements.plist"
+
+echo "==> .app に署名します..."
+codesign \
+  --force \
+  --deep \
+  --sign "${SIGN_IDENTITY}" \
+  --entitlements "${ENTITLEMENTS}" \
+  --options runtime \
+  "${DIST_DIR}/${APP_NAME}.app"
+
+echo "==> 署名を検証します..."
+codesign --verify --deep --strict "${DIST_DIR}/${APP_NAME}.app" && \
+  echo "    [OK] 署名検証成功"
 
 echo "==> .dmg を生成します..."
 
