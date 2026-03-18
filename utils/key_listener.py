@@ -73,12 +73,14 @@ class KeyListener:
         on_panic: Callable[[], None],
         on_quit: Callable[[], None] = lambda: None,
         on_copy_hijack: Callable[[], None] = lambda: None,
+        on_question_shift: Callable[[int], None] = lambda _delta: None,
     ) -> None:
         self._on_ai_answer = on_ai_answer
         self._on_vote = on_vote
         self._on_panic = on_panic
         self._on_quit = on_quit
         self._on_copy_hijack = on_copy_hijack
+        self._on_question_shift = on_question_shift
 
         self._pressed: set = set()
         self._listener: keyboard.Listener | None = None
@@ -311,5 +313,23 @@ class KeyListener:
                         target=self._safe_call, args=(lambda n=choice: self._on_vote(n),), daemon=True
                     ).start()
                     return
+
+            # Alt/Option + ↑/↓ → 問題番号の増減
+            if self._has(alt, Key.up):
+                self._pressed.clear()
+                threading.Thread(
+                    target=self._safe_call,
+                    args=(lambda: self._on_question_shift(+1),),
+                    daemon=True,
+                ).start()
+                return
+            if self._has(alt, Key.down):
+                self._pressed.clear()
+                threading.Thread(
+                    target=self._safe_call,
+                    args=(lambda: self._on_question_shift(-1),),
+                    daemon=True,
+                ).start()
+                return
         except Exception as e:
             print(f"[Key Hook Error] {e}")

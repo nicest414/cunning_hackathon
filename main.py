@@ -76,6 +76,7 @@ class _Bridge(QObject):
     votes_updated = pyqtSignal(object)  # Counter
     copy_hijack_requested = pyqtSignal()
     clipboard_replace = pyqtSignal(str)
+    question_shift = pyqtSignal(int)
 
 
 def main() -> None:
@@ -110,12 +111,15 @@ def main() -> None:
     apology = ApologyWindow()
 
     bridge = _Bridge()
-    network = VoteNetwork(on_update=lambda c: bridge.votes_updated.emit(c))
+    network = VoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("udp", c)))
     network.start()
-    audio_network = AudioVoteNetwork(on_update=lambda c: bridge.votes_updated.emit(c))
+    audio_network = AudioVoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("audio", c)))
     audio_network.start()
 
     # --- シグナル接続 ---
+    # 問題選択モードが一度でも有効になったかどうかを示すフラグ。
+    # 問題番号を持たない UDP 側の票更新で表示が上書きされるのを防ぐために使う。
+    question_selection_enabled: bool = False
 
     def _do_ai_answer() -> None:
         """スクリーンキャプチャ → Gemini に問い合わせ (別スレッドで実行して UI フリーズを防ぐ)。"""
@@ -148,7 +152,33 @@ def main() -> None:
         audio_network.send_vote(choice)
 
     bridge.vote_cast.connect(_do_vote)
-    bridge.votes_updated.connect(overlay.show_votes)
+
+    def _on_votes_updated(payload: object) -> None:
+        """票更新イベントの UI 反映制御ラッパー。"""
+        source = "unknown"
+        votes = payload
+        if isinstance(payload, tuple) and len(payload) == 2:
+            source, votes = payload
+
+        # 問題選択が有効な間は、問題番号情報のない UDP 票で UI を上書きしない。
+        if question_selection_enabled and source == "udp":
+            return
+
+        try:
+            overlay.show_votes(votes)
+        except Exception:
+            # オーバーレイ更新失敗時もステルス性を優先して黙殺する
+            pass
+
+    bridge.votes_updated.connect(_on_votes_updated)
+
+    def _do_question_shift(delta: int) -> None:
+        nonlocal question_selection_enabled
+        question_selection_enabled = True
+        new_question = audio_network.shift_question(delta)
+        print(f"[AudioVote] 現在の問題番号: {new_question}")
+
+    bridge.question_shift.connect(_do_question_shift)
 
     def _do_panic() -> None:
         overlay.hide_all()
@@ -191,6 +221,7 @@ def main() -> None:
         on_panic=bridge.panic_requested.emit,
         on_quit=app.quit,
         on_copy_hijack=bridge.copy_hijack_requested.emit,
+        on_question_shift=bridge.question_shift.emit,
     )
     listener.start()
 
@@ -206,6 +237,7 @@ def main() -> None:
     print(f"  AI回答           : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
     print(f"  クリップボード置換: Cmd+Shift+C      (Win/Linux: Ctrl+Shift+C)")
     print(f"  多数決           : Option+1〜4      (Win/Linux: Alt+1〜4)")
+    print(f"  問題番号変更     : Option+↑/↓       (Win/Linux: Alt+↑/↓)")
     print(f"  緊急謝罪         : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
     print(f"  終了             : Cmd+Shift+X     (Win/Linux: Ctrl+Shift+X)")
 
