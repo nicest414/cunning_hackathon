@@ -155,8 +155,6 @@ def main() -> None:
 
     def _on_votes_updated(payload: object) -> None:
         """票更新イベントの UI 反映制御ラッパー。"""
-        nonlocal question_selection_enabled
-
         source = "unknown"
         votes = payload
         if isinstance(payload, tuple) and len(payload) == 2:
