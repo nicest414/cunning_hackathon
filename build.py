@@ -1,5 +1,6 @@
 """OS自動判定ビルドスクリプト。"""
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -47,16 +48,46 @@ def package_mac() -> None:
 
 def package_windows() -> None:
     """Windows: Inno Setup で インストーラー .exe を生成する。"""
-    # Inno Setup のデフォルトインストールパスを探索する
-    iscc_candidates = [
-        Path(r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe"),
-        Path(r"C:\Program Files\Inno Setup 6\ISCC.exe"),
-        shutil.which("ISCC"),
-    ]
-    iscc = next((p for p in iscc_candidates if p and Path(p).exists()), None)
+    # PATH 上の shims / WinGet links / 代表的なインストール先を順に探索する
+    iscc_candidates: list[Path] = []
+    which_result = shutil.which("ISCC")
+    if which_result:
+        iscc_candidates.append(Path(which_result))
+
+    program_files = os.environ.get("ProgramFiles")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)")
+    local_app_data = os.environ.get("LOCALAPPDATA")
+
+    for base in (program_files_x86, program_files):
+        if base:
+            iscc_candidates.extend(
+                [
+                    Path(base) / "Inno Setup 6" / "ISCC.exe",
+                    Path(base) / "Inno Setup" / "ISCC.exe",
+                ]
+            )
+
+    if local_app_data:
+        iscc_candidates.extend(
+            [
+                Path(local_app_data) / "Programs" / "Inno Setup 6" / "ISCC.exe",
+                Path(local_app_data) / "Programs" / "Inno Setup" / "ISCC.exe",
+                Path(local_app_data) / "Microsoft" / "WinGet" / "Links" / "ISCC.exe",
+            ]
+        )
+
+        winget_packages_dir = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+        for package_dir in winget_packages_dir.glob("JRSoftware.InnoSetup*"):
+            iscc_candidates.append(package_dir / "ISCC.exe")
+            iscc_candidates.append(package_dir / "Inno Setup 6" / "ISCC.exe")
+
+    iscc = next((candidate for candidate in iscc_candidates if candidate.exists()), None)
     if iscc is None:
         print("[ERROR] Inno Setup が見つかりません。以下でインストールしてください:")
         print("  winget install JRSoftware.InnoSetup")
+        print("[INFO] 探索したパス:")
+        for candidate in iscc_candidates:
+            print(f"  - {candidate}")
         sys.exit(1)
     _run([str(iscc), "installer/installer.iss"], cwd=ROOT)
     exe = DIST / "InputMonitor_Setup.exe"
