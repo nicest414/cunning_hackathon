@@ -158,28 +158,92 @@ def main() -> None:
 
     bridge.panic_requested.connect(_do_panic)
 
+    # 二重起動防止フラグ。_do_copy_hijack はメインスレッドからのみ呼ばれるため
+    # threading.Lock 不要。list でラップして _after_copy クロージャからも書き換え可能にする。
+    _cb_in_progress = [False]
+
     def _do_copy_hijack() -> None:
         """Cmd+Shift+C 検知後、選択テキストを AI に送り返答でクリップボードを上書きする。
 
-        Cmd+C シミュレーション＋クリップボード退避/復元で選択テキストを取得する。
-        subprocess と sleep を含むため、処理全体をバックグラウンドスレッドで実行する。
+        この関数は bridge のキュー接続経由でメインスレッドから呼ばれる。
+        macOS: クリップボード操作(Qt) と CGEventPost(pynput Controller) はすべて
+               メインスレッドで実行し、200ms の待機は QTimer.singleShot(非ブロッキング)
+               で処理する。バックグラウンドスレッドは AI 呼び出しのみ担当。
+        Windows/Linux: subprocess 経由でクリップボード操作(bg スレッド)。
         """
-        def _task() -> None:
-            question = get_selected_text()
-            if not question:
-                print("[Clipboard] テキストが選択されていません。テキストを選択してから実行してください。")
-                return
+        import platform
 
-            print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
-            _notifier.notify_accepted()
+        if _cb_in_progress[0]:
+            print("[Clipboard] 処理中のため無視します。")
+            return
 
-            answer = ai_client.ask_text(question)
-            if answer:
-                print(f"[Clipboard] 返答を受信し、クリップボードを置換します。")
-                _notifier.notify_ready()
-                bridge.clipboard_replace.emit(answer)
+        IS_MAC = platform.system() == "Darwin"
 
-        threading.Thread(target=_task, daemon=True).start()
+        if not IS_MAC:
+            def _win_task() -> None:
+                question = get_selected_text()
+                if not question:
+                    print("[Clipboard] テキストが選択されていません。テキストを選択してから実行してください。")
+                    return
+                print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
+                _notifier.notify_accepted()
+                answer = ai_client.ask_text(question)
+                if answer:
+                    print("[Clipboard] 返答を受信し、クリップボードを置換します。")
+                    _notifier.notify_ready()
+                    bridge.clipboard_replace.emit(answer)
+            threading.Thread(target=_win_task, daemon=True).start()
+            return
+
+        # macOS: Step 1〜3 をメインスレッドで処理
+        _cb_in_progress[0] = True
+
+        # Step 1: クリップボードを退避してクリア（メインスレッド / Qt clipboard）
+        original = app.clipboard().text()
+        app.clipboard().clear()
+
+        # Step 2: Cmd+C シミュレーション（メインスレッドから CGEventPost → クラッシュしない）
+        try:
+            from pynput.keyboard import Controller, Key as PKey
+            kbd = Controller()
+            kbd.press(PKey.cmd)
+            kbd.press("c")
+            kbd.release("c")
+            kbd.release(PKey.cmd)
+        except Exception as e:
+            print(f"[Clipboard] キー送信エラー: {e}")
+            app.clipboard().setText(original)
+            _cb_in_progress[0] = False
+            return
+
+        # Step 3: 200ms 後にクリップボードを読み取る。
+        # QTimer.singleShot をメインスレッドから呼ぶため確実に動作する。
+        # この間メインスレッドは event loop でキー入力を通常処理し続ける（ブロックなし）。
+        def _after_copy() -> None:
+            try:
+                question = app.clipboard().text()
+                # クリップボードを元の内容に復元（例外が起きても必ず実行）
+                app.clipboard().setText(original)
+
+                if not question:
+                    print("[Clipboard] テキストが選択されていません。テキストを選択してから実行してください。")
+                    return
+
+                print(f"[Clipboard] 置換リクエストを受理しました: {question[:20]}...")
+                _notifier.notify_accepted()
+
+                def _ai_task() -> None:
+                    answer = ai_client.ask_text(question)
+                    if answer:
+                        print("[Clipboard] 返答を受信し、クリップボードを置換します。")
+                        _notifier.notify_ready()
+                        bridge.clipboard_replace.emit(answer)
+
+                threading.Thread(target=_ai_task, daemon=True).start()
+            finally:
+                _cb_in_progress[0] = False
+
+        QTimer.singleShot(200, _after_copy)
 
     bridge.copy_hijack_requested.connect(_do_copy_hijack)
     bridge.clipboard_replace.connect(app.clipboard().setText)
@@ -193,6 +257,13 @@ def main() -> None:
         on_copy_hijack=bridge.copy_hijack_requested.emit,
     )
     listener.start()
+
+    # Caps Lock 状態をメインスレッドで定期的にキャッシュする。
+    # macOS の GetCurrentKeyModifiers (HIToolbox) はメインスレッド専用API のため
+    # バックグラウンドスレッドから直接呼ぶと EXC_BREAKPOINT でクラッシュする。
+    _caps_timer = QTimer()
+    _caps_timer.timeout.connect(_notifier.refresh_caps_state)
+    _caps_timer.start(1000)  # 1秒ごとに Caps Lock 状態を更新
 
     # Ctrl+C (SIGINT) で app.quit() を呼び、Qt イベントループを終了させる
     signal.signal(signal.SIGINT, lambda *_: app.quit())

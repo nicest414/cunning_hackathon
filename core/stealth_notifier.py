@@ -87,6 +87,13 @@ class AbstractKeyboardLEDNotifier(ABC):
         """実行中のプロトコルをキャンセルし、LEDをリセットする。"""
         self._cancel_event.set()
 
+    def refresh_caps_state(self) -> None:
+        """Caps Lock の論理状態をメインスレッドで読み取りキャッシュする。
+
+        PyQt6 の QTimer などから定期的に呼び出すこと（メインスレッド限定）。
+        デフォルト実装は何もしない。macOS サブクラスでオーバーライドする。
+        """
+
     def notify_accepted(self) -> None:
         """クリップボード置換のリクエストを受理したことを通知する（1回点灯）。"""
         if not self._lock.acquire(blocking=False):

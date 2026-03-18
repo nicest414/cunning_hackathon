@@ -157,8 +157,11 @@ class MacOSLEDNotifier(AbstractKeyboardLEDNotifier):
 
     def __init__(self) -> None:
         super().__init__()
+        self._cached_caps_state: bool = False
         self._check_accessibility()
         self._manager, self._devices = self._setup_hid()
+        # 初回キャッシュ: __init__ はメインスレッドで呼ばれるため安全
+        self.refresh_caps_state()
 
     def _check_accessibility(self) -> None:
         trusted = bool(_ax.AXIsProcessTrusted())
@@ -238,18 +241,28 @@ class MacOSLEDNotifier(AbstractKeyboardLEDNotifier):
                 _cf.CFRelease(value)
             _cf.CFRelease(elem)  # _find_caps_lock_element でCFRetainした分を解放
 
-    def _get_current_caps_state(self) -> bool:
-        """Caps Lockの現在の論理状態を取得する。"""
-        # IOKit Low-level: GetCurrentKeyModifiers の代替として
-        # Carbon.HIToolbox は deprecated なので ctypes で直接
+    def refresh_caps_state(self) -> None:
+        """Carbon API で Caps Lock 状態を読み取りキャッシュする。
+
+        HIToolbox の TSMCurrentKeyboardInputSourceRefCreate はメインスレッド
+        専用APIのため、必ずメインスレッド（QTimer コールバック等）から呼ぶこと。
+        バックグラウンドスレッドから呼ぶと EXC_BREAKPOINT でクラッシュする。
+        """
         try:
             carbon = ctypes.CDLL("/System/Library/Frameworks/Carbon.framework/Carbon")
             carbon.GetCurrentKeyModifiers.restype = c_uint32
             mods = carbon.GetCurrentKeyModifiers()
             # alphaLock = 0x0400
-            return bool(mods & 0x0400)
+            self._cached_caps_state = bool(mods & 0x0400)
         except Exception:
-            return False
+            pass
+
+    def _get_current_caps_state(self) -> bool:
+        """キャッシュ済みの Caps Lock 論理状態を返す（スレッドセーフ）。
+
+        実際の読み取りは refresh_caps_state() がメインスレッドで行う。
+        """
+        return self._cached_caps_state
 
     def __del__(self) -> None:
         try:

@@ -34,6 +34,11 @@ def _get_selected_text_macos() -> str:
     """macOS: Cmd+C シミュレーションで選択テキストを取得する。
 
     クリップボードの既存内容を保存・復元するため、クリップボードを汚さない。
+
+    注意: pbpaste/pbcopy はメインスレッド以外からも呼び出し可能だが、
+    PyInstaller ビルド版 .app からは動作しない場合がある。
+    ビルド版での macOS クリップボード操作は main.py の _do_copy_hijack で
+    Qt clipboard + QTimer を使ってメインスレッドから行うこと。
     """
     import time
     import subprocess
