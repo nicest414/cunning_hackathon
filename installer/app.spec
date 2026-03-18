@@ -74,8 +74,8 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    codesign_identity='Apple Development: riku0684@icloud.com (LLRX3LZ4AZ)',
+    entitlements_file=str(ROOT / 'entitlements.plist'),
     # Windows: タスクマネージャーのプロパティ欄に表示されるバージョン情報を偽装
     version=str(PROJECT_ROOT / 'installer' / 'version_info.txt') if sys.platform == 'win32' else None,
 )
@@ -97,7 +97,7 @@ if sys.platform == 'darwin':
         coll,
         name='Input Monitor.app',
         icon=None,               # アイコンがある場合は 'assets/icon.icns' を指定
-        bundle_identifier='com.apple.accessibility.inputmonitor',
+        bundle_identifier='com.cunningapp.inputmonitor',
         info_plist={
             # pynput のグローバルフックに必要なアクセシビリティ権限の説明
             'NSAccessibilityUsageDescription':
@@ -105,7 +105,5 @@ if sys.platform == 'darwin':
             # mss のスクリーンキャプチャに必要な画面収録権限の説明
             'NSScreenCaptureUsageDescription':
                 '画面をキャプチャして AI に送信するために画面収録権限が必要です。',
-            # Dock・メニューバーにアイコンを表示しない（バックグラウンドアプリとして動作）
-            'LSUIElement': True,
         },
     )

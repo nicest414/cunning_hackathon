@@ -24,6 +24,19 @@ _log = _setup_file_logger()
 
 _IS_MAC = platform.system() == "Darwin"
 
+
+def _ax_is_process_trusted() -> bool:
+    """macOS: AXIsProcessTrusted() の結果を返す。非 macOS では常に True。"""
+    if not _IS_MAC:
+        return True
+    try:
+        import ctypes, ctypes.util
+        lib = ctypes.cdll.LoadLibrary(ctypes.util.find_library("ApplicationServices") or "")
+        lib.AXIsProcessTrusted.restype = ctypes.c_bool
+        return bool(lib.AXIsProcessTrusted())
+    except Exception:
+        return False
+
 # macOS: command / Windows・Linux: ctrl
 _MOD_KEY = Key.cmd if _IS_MAC else Key.ctrl
 
@@ -59,7 +72,17 @@ class KeyListener:
     def start(self) -> None:
         """pynput リスナーをバックグラウンドスレッドで起動する。ウォッチドッグも起動。"""
         _print_mac_warning()
-        _log.info("[KeyListener] start() 呼び出し (platform=%s)", platform.system())
+        import sys
+        try:
+            import pynput
+            pynput_ver = pynput.__version__
+        except Exception:
+            pynput_ver = "unknown"
+        ax_trusted = _ax_is_process_trusted()
+        _log.info(
+            "[KeyListener] start() 呼び出し platform=%s python=%s pynput=%s AXIsProcessTrusted=%s",
+            platform.system(), sys.version.split()[0], pynput_ver, ax_trusted,
+        )
         self._stopped = False
         self._start_listener()
         self._watchdog_thread = threading.Thread(target=self._watchdog, daemon=True)
@@ -83,6 +106,15 @@ class KeyListener:
             msg = "[KeyListener] リスナーを起動しました。"
             print(msg)
             _log.info(msg)
+
+            # 起動直後に内部例外を確認する（pynput が失敗していないか）
+            import time
+            time.sleep(0.3)
+            exc = getattr(self._listener, "_exc", None)
+            alive = self._listener.is_alive()
+            _log.info("[KeyListener] 起動後チェック: is_alive=%s _exc=%s", alive, exc)
+            if exc:
+                _log.error("[KeyListener] pynput 内部例外を検出: %s", exc, exc_info=exc)
         except Exception as e:
             msg = f"[KeyListener] リスナー起動失敗: {e}"
             print(msg)
@@ -91,12 +123,26 @@ class KeyListener:
     def _watchdog(self) -> None:
         """リスナーが死んでいたら自動で再起動するウォッチドッグ。"""
         import time
+        _health_tick = 0
         while not self._stopped:
             time.sleep(1.0)
             if self._stopped:
                 break
+            _health_tick += 1
+
+            # 10秒ごとに定期ヘルスレポートを出力する
+            if _health_tick % 10 == 0:
+                alive = self._listener.is_alive() if self._listener else False
+                exc = getattr(self._listener, "_exc", None) if self._listener else None
+                ax = _ax_is_process_trusted()
+                _log.info(
+                    "[KeyListener] ヘルスチェック: is_alive=%s _exc=%s AXIsProcessTrusted=%s",
+                    alive, exc, ax,
+                )
+
             if self._listener is None or not self._listener.is_alive():
-                msg = "[KeyListener] リスナーが停止を検知 → 再起動します。"
+                exc = getattr(self._listener, "_exc", None) if self._listener else None
+                msg = f"[KeyListener] リスナーが停止を検知 → 再起動します。(停止前の_exc={exc})"
                 print(msg)
                 _log.warning(msg)
                 self._start_listener()
@@ -109,13 +155,9 @@ class KeyListener:
 
     # --- 内部処理 ---
 
-    _first_key_received = False
-
     def _on_press(self, key) -> None:
         try:
-            if not KeyListener._first_key_received:
-                KeyListener._first_key_received = True
-                _log.info("[KeyListener] 最初のキー入力を受信しました（イベントタップ正常）: %s", key)
+            _log.debug("[KeyListener] KEY_PRESS: %s", key)
             self._pressed.add(key)
             self._check_hotkeys()
         except Exception as e:
@@ -125,9 +167,12 @@ class KeyListener:
 
     def _on_release(self, key) -> None:
         try:
+            _log.debug("[KeyListener] KEY_RELEASE: %s", key)
             self._pressed.discard(key)
         except Exception as e:
-            print(f"[KeyListener] on_release エラー: {e}")
+            msg = f"[KeyListener] on_release エラー: {e}"
+            print(msg)
+            _log.exception(msg)
 
     # macOS ANSI 仮想キーコード（Option 修飾時も変わらない）
     _MAC_NUM_VK = {1: 18, 2: 19, 3: 20, 4: 21}
