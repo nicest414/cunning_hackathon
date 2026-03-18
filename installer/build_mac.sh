@@ -4,7 +4,7 @@ set -euo pipefail
 APP_NAME="Input Monitor"
 DIST_DIR="dist"
 DMG_NAME="InputMonitor.dmg"
-SIGN_IDENTITY="Apple Development: riku0684@icloud.com (LLRX3LZ4AZ)"
+SIGN_IDENTITY="${CODESIGN_IDENTITY:?'CODESIGN_IDENTITY 環境変数を設定してください (例: export CODESIGN_IDENTITY=\"Apple Development: you@example.com (XXXXXXXXXX)\")'}"
 ENTITLEMENTS="installer/entitlements.plist"
 
 echo "==> .app に署名します..."

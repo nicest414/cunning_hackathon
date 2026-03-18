@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
@@ -31,11 +32,9 @@ a = Analysis(
         'keyring.backends.null',
         # PyObjC: pynput._darwin が依存する macOS フレームワーク
         # （PyInstaller は動的ロードされる objc モジュールを自動検出できない）
-        'objc',
-        'AppKit',
-        'Quartz',
-        'Quartz.CoreGraphics',
-        'CoreFoundation',
+        # macOS のみで利用可能なため、他 OS でのビルド時は追加しない
+        *(['objc', 'AppKit', 'Quartz', 'Quartz.CoreGraphics', 'CoreFoundation']
+          if sys.platform == 'darwin' else []),
         # google-genai の内部依存
         'google.genai',
         'google.auth',
@@ -74,7 +73,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity='Apple Development: riku0684@icloud.com (LLRX3LZ4AZ)',
+    codesign_identity=os.environ.get('CODESIGN_IDENTITY') or None,
     entitlements_file=str(ROOT / 'entitlements.plist'),
     # Windows: タスクマネージャーのプロパティ欄に表示されるバージョン情報を偽装
     version=str(PROJECT_ROOT / 'installer' / 'version_info.txt') if sys.platform == 'win32' else None,

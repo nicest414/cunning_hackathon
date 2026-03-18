@@ -58,10 +58,13 @@ def _check_macos_accessibility() -> None:
         "  システム設定 > プライバシーとセキュリティ > アクセシビリティ\n"
         "  にこのアプリを追加してから、アプリを再起動してください。\n"
     )
-    subprocess.Popen([
-        "open",
-        "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-    ])
+    try:
+        subprocess.Popen([
+            "open",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        ])
+    except Exception:
+        pass  # 案内処理の失敗はアプリ起動を阻害しない
 
 
 class _Bridge(QObject):

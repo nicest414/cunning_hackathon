@@ -9,15 +9,29 @@ from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
 
 # ビルド版 (console=False) でもエラーを確認できるようファイルにログを出力する
+# KL_DEBUG=1 環境変数を設定するとキー入力を含む DEBUG ログが有効になる
+_KL_DEBUG = os.environ.get("KL_DEBUG") == "1"
+
 def _setup_file_logger() -> logging.Logger:
-    log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "InputMonitor")
-    os.makedirs(log_dir, exist_ok=True)
     logger = logging.getLogger("KeyListener")
-    if not logger.handlers:
+    if logger.handlers:
+        return logger
+    try:
+        _sys = platform.system()
+        if _sys == "Darwin":
+            log_dir = os.path.join(os.path.expanduser("~"), "Library", "Logs", "InputMonitor")
+        elif _sys == "Windows":
+            log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "InputMonitor", "Logs")
+        else:
+            log_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "InputMonitor", "logs")
+        os.makedirs(log_dir, exist_ok=True)
         handler = logging.FileHandler(os.path.join(log_dir, "key_listener.log"), encoding="utf-8")
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
         logger.addHandler(handler)
-        logger.setLevel(logging.DEBUG)
+    except Exception:
+        # ファイルログが作れなくても NullHandler でフォールバックして起動を継続する
+        logger.addHandler(logging.NullHandler())
+    logger.setLevel(logging.DEBUG if _KL_DEBUG else logging.INFO)
     return logger
 
 _log = _setup_file_logger()
@@ -106,15 +120,7 @@ class KeyListener:
             msg = "[KeyListener] リスナーを起動しました。"
             print(msg)
             _log.info(msg)
-
-            # 起動直後に内部例外を確認する（pynput が失敗していないか）
-            import time
-            time.sleep(0.3)
-            exc = getattr(self._listener, "_exc", None)
-            alive = self._listener.is_alive()
-            _log.info("[KeyListener] 起動後チェック: is_alive=%s _exc=%s", alive, exc)
-            if exc:
-                _log.error("[KeyListener] pynput 内部例外を検出: %s", exc, exc_info=exc)
+            # 起動後の内部例外チェックはウォッチドッグの初回ティックで行う（メインスレッドをブロックしない）
         except Exception as e:
             msg = f"[KeyListener] リスナー起動失敗: {e}"
             print(msg)
@@ -129,6 +135,15 @@ class KeyListener:
             if self._stopped:
                 break
             _health_tick += 1
+
+            # 起動直後チェック（1秒後）: pynput 内部例外を確認する
+            if _health_tick == 1:
+                exc = getattr(self._listener, "_exc", None) if self._listener else None
+                alive = self._listener.is_alive() if self._listener else False
+                _log.info("[KeyListener] 起動後チェック: is_alive=%s _exc=%s", alive, exc)
+                if exc:
+                    _log.error("[KeyListener] pynput 内部例外を検出: %s", exc,
+                               exc_info=(type(exc), exc, exc.__traceback__))
 
             # 10秒ごとに定期ヘルスレポートを出力する
             if _health_tick % 10 == 0:
@@ -157,7 +172,8 @@ class KeyListener:
 
     def _on_press(self, key) -> None:
         try:
-            _log.debug("[KeyListener] KEY_PRESS: %s", key)
+            if _KL_DEBUG:
+                _log.debug("[KeyListener] KEY_PRESS: %s", key)
             self._pressed.add(key)
             self._check_hotkeys()
         except Exception as e:
@@ -167,7 +183,8 @@ class KeyListener:
 
     def _on_release(self, key) -> None:
         try:
-            _log.debug("[KeyListener] KEY_RELEASE: %s", key)
+            if _KL_DEBUG:
+                _log.debug("[KeyListener] KEY_RELEASE: %s", key)
             self._pressed.discard(key)
         except Exception as e:
             msg = f"[KeyListener] on_release エラー: {e}"
