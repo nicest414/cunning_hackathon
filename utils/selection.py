@@ -11,6 +11,9 @@ Cmd/Ctrl+C シミュレーション＋クリップボード退避/復元を使�
 import platform
 
 _IS_MAC = platform.system() == "Darwin"
+_WINDOWS_PRE_COPY_DELAY_SEC = 0.12
+_WINDOWS_CLIPBOARD_SETTLE_SEC = 0.2
+_WINDOWS_COPY_RETRY_DELAYS_SEC = (0.12, 0.2, 0.35)
 
 
 def get_selected_text() -> str:
@@ -94,20 +97,41 @@ def _get_selected_text_windows() -> str:
         subprocess.run(["clip"], input="", text=True, timeout=1)
         selected = ""
         try:
+            # ホットキー押下直後は Shift が残っていることがあるため、少し待って競合を避ける
+            time.sleep(_WINDOWS_PRE_COPY_DELAY_SEC)
             kbd = Controller()
-            kbd.press(Key.ctrl)
-            kbd.press("c")
-            kbd.release("c")
-            kbd.release(Key.ctrl)
+            shift_keys = [
+                Key.shift,
+                getattr(Key, "shift_l", None),
+                getattr(Key, "shift_r", None),
+            ]
+            for shift_key in shift_keys:
+                if shift_key is None:
+                    continue
+                try:
+                    kbd.release(shift_key)
+                except Exception:
+                    pass
+            for delay_sec in _WINDOWS_COPY_RETRY_DELAYS_SEC:
+                kbd.press(Key.ctrl)
+                kbd.press("c")
+                kbd.release("c")
+                kbd.release(Key.ctrl)
 
-            # クリップボードへの書き込みを待つ
-            time.sleep(0.15)
+                # クリップボードへの書き込みを待つ（アプリ差による遅延を吸収）
+                time.sleep(delay_sec)
 
-            result = subprocess.run(
-                ["powershell", "-command", "Get-Clipboard"],
-                capture_output=True, text=True, timeout=2,
-            )
-            selected = result.stdout.rstrip("\n") if result.returncode == 0 else ""
+                result = subprocess.run(
+                    ["powershell", "-command", "Get-Clipboard"],
+                    capture_output=True, text=True, timeout=2,
+                )
+                selected = result.stdout.rstrip("\r\n") if result.returncode == 0 else ""
+                if selected:
+                    break
+
+            # 旧定数は残すが、互換維持のため最終待機を入れてタイミング差を抑える
+            if not selected:
+                time.sleep(_WINDOWS_CLIPBOARD_SETTLE_SEC)
         finally:
             # 例外が起きても必ずクリップボードを元に戻す
             subprocess.run(["clip"], input=original, text=True, timeout=1)
