@@ -29,13 +29,13 @@ class TestVoteNetwork(unittest.TestCase):
 
     # ------------------------------------------------------------------
     def test_send_vote_broadcasts_json(self):
-        """send_vote は JSON ペイロードをブロードキャストアドレスへ送る。"""
+        """send_vote は question_id 付きの JSON ペイロードをブロードキャストアドレスへ送る。"""
         from core.network import BROADCAST_ADDR, BROADCAST_PORT
         net, mock_sock, on_update = self._make_network()
 
         net.send_vote(3)
 
-        expected_payload = json.dumps({"vote": 3}).encode()
+        expected_payload = json.dumps({"type": "vote", "vote": 3, "question_id": 1}).encode()
         mock_sock.sendto.assert_called_once_with(
             expected_payload, (BROADCAST_ADDR, BROADCAST_PORT)
         )
@@ -75,50 +75,81 @@ class TestVoteNetwork(unittest.TestCase):
         args, _ = on_update.call_args
         self.assertEqual(len(args[0]), 0)
 
+    def _run_listen_with_packets(self, net, mock_sock, packets):
+        """指定パケット列を受信させて _listen() を同期実行するヘルパー。"""
+        call_count = [0]
+
+        def controlled_recvfrom(_size):
+            call_count[0] += 1
+            if call_count[0] <= len(packets):
+                return packets[call_count[0] - 1]
+            net._running = False
+            raise socket.timeout
+
+        mock_sock.recvfrom.side_effect = controlled_recvfrom
+        net._running = True
+        net._listen()
+
     def test_listen_processes_valid_packet(self):
-        """_listen() が正常な JSON パケットを受け取ると _votes を更新する。"""
+        """_listen() が正常な JSON パケット（新フォーマット）を受け取ると _votes を更新する。"""
         on_update = MagicMock()
         mock_sock = MagicMock()
-
-        # 1パケット受信後に timeout を投げてループを終わらせる
-        valid_payload = json.dumps({"vote": 3}).encode()
-        mock_sock.recvfrom.side_effect = [
-            (valid_payload, ("192.168.1.2", 45678)),
-            socket.timeout,
-        ]
 
         with patch("socket.socket", return_value=mock_sock):
             from core.network import VoteNetwork
             net = VoteNetwork(on_update=on_update)
 
-        net._running = True
-        # _listen を直接呼んでシミュレート (スレッドを使わない)
-        # recvfrom が timeout を投げた時点でループが抜けるよう _running=False にする
-        def stop_after(*args, **kwargs):
-            net._running = False
-            raise socket.timeout
-
-        mock_sock.recvfrom.side_effect = [
-            (valid_payload, ("192.168.1.2", 45678)),
-            socket.timeout,
-        ]
-
-        # ループが無限にならないよう _running をフラグ管理
-        original_recvfrom = mock_sock.recvfrom.side_effect
-        call_count = [0]
-
-        def controlled_recvfrom(_size):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return valid_payload, ("192.168.1.2", 45678)
-            net._running = False
-            raise socket.timeout
-
-        mock_sock.recvfrom.side_effect = controlled_recvfrom
-
-        net._listen()
+        valid_payload = json.dumps({"type": "vote", "vote": 3, "question_id": 1}).encode()
+        self._run_listen_with_packets(net, mock_sock, [(valid_payload, ("192.168.1.2", 45678))])
 
         self.assertEqual(net._votes[3], 1)
+
+    def test_listen_processes_legacy_packet(self):
+        """_listen() が question_id なし旧フォーマットのパケットも受け付ける。"""
+        on_update = MagicMock()
+        mock_sock = MagicMock()
+
+        with patch("socket.socket", return_value=mock_sock):
+            from core.network import VoteNetwork
+            net = VoteNetwork(on_update=on_update)
+
+        legacy_payload = json.dumps({"vote": 2}).encode()
+        self._run_listen_with_packets(net, mock_sock, [(legacy_payload, ("192.168.1.2", 45678))])
+
+        self.assertEqual(net._votes[2], 1)
+
+    def test_listen_ignores_vote_for_different_question(self):
+        """_listen() が現在の問題と異なる question_id の票を無視する。"""
+        on_update = MagicMock()
+        mock_sock = MagicMock()
+
+        with patch("socket.socket", return_value=mock_sock):
+            from core.network import VoteNetwork
+            net = VoteNetwork(on_update=on_update)
+
+        net._current_question = 2
+        wrong_q_payload = json.dumps({"type": "vote", "vote": 1, "question_id": 1}).encode()
+        self._run_listen_with_packets(net, mock_sock, [(wrong_q_payload, ("192.168.1.2", 45678))])
+
+        self.assertEqual(len(net._votes), 0)
+
+    def test_listen_handles_question_message(self):
+        """_listen() が question メッセージで問題番号を更新し投票をリセットする。"""
+        on_update = MagicMock()
+        on_question_changed = MagicMock()
+        mock_sock = MagicMock()
+
+        with patch("socket.socket", return_value=mock_sock):
+            from core.network import VoteNetwork
+            net = VoteNetwork(on_update=on_update, on_question_changed=on_question_changed)
+
+        net._votes[1] = 3  # 既存の票
+        q_payload = json.dumps({"type": "question", "question_id": 5}).encode()
+        self._run_listen_with_packets(net, mock_sock, [(q_payload, ("192.168.1.2", 45678))])
+
+        self.assertEqual(net._current_question, 5)
+        self.assertEqual(len(net._votes), 0)
+        on_question_changed.assert_called_once_with(5)
 
     def test_listen_ignores_invalid_json(self):
         """_listen() が壊れた JSON を受け取っても例外を握りつぶす。"""

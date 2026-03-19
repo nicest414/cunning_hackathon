@@ -86,6 +86,7 @@ class _Bridge(QObject):
     copy_hijack_requested = pyqtSignal()
     clipboard_replace = pyqtSignal(str)
     question_shift = pyqtSignal(int)
+    question_received = pyqtSignal(int)  # 他端末から問題番号変更を受信
 
 
 def main() -> None:
@@ -126,7 +127,10 @@ def main() -> None:
     tray = TrayIcon()
 
     bridge = _Bridge()
-    network = VoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("udp", c)))
+    network = VoteNetwork(
+        on_update=lambda c: bridge.votes_updated.emit(("udp", c)),
+        on_question_changed=lambda q: bridge.question_received.emit(q),
+    )
     network.start()
     audio_network: AudioVoteNetwork | None = None
     if flags["audio_vote_enabled"]:
@@ -191,15 +195,21 @@ def main() -> None:
 
     def _do_question_shift(delta: int) -> None:
         nonlocal question_selection_enabled
-        if audio_network is None:
-            print("[AudioVote] 超音波多数決は無効です。hotkeys.json の flags.audio_vote_enabled を true にしてください。")
-            return
         question_selection_enabled = True
-        new_question = audio_network.shift_question(delta)
-        tray.show_question(new_question)
-        print(f"[AudioVote] 現在の問題番号: {new_question}")
+        if audio_network is not None:
+            new_question = audio_network.shift_question(delta)
+            # UDP 側も同じ問題番号にブロードキャスト
+            network.send_question(new_question)
+        else:
+            new_question = network.shift_question(delta)
+        print(f"[Vote] 現在の問題番号: Q{new_question}")
 
     bridge.question_shift.connect(_do_question_shift)
+
+    def _on_question_received(question_no: int) -> None:
+        tray.show_question(question_no)
+
+    bridge.question_received.connect(_on_question_received)
 
     def _do_panic() -> None:
         overlay.hide_all()

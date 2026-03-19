@@ -105,11 +105,10 @@ class TrayIcon(QSystemTrayIcon):
         self._reset_timer.start(5000)
 
     def show_question(self, question_no: int) -> None:
-        """現在の問題番号をツールチップに表示する（アイコン色は変えない）。"""
-        current_tip = self.toolTip()
-        # 問題番号だけをプレフィックスとして付加
-        base = current_tip.split(" | Q")[0]
-        self.setToolTip(f"{base} | Q{question_no}")
+        """現在の問題番号をアイコンとツールチップに表示する（3秒後にリセット）。"""
+        self.setIcon(_make_icon(_NEUTRAL_COLOR, f"Q{question_no}"))
+        self.setToolTip(f"Q{question_no}")
+        self._reset_timer.start(3000)
 
     # ------------------------------------------------------------------
     # 内部
