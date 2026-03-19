@@ -41,12 +41,22 @@ BROADCAST_ADDR = _get_broadcast_addr()  # モジュールロード時に一度�
 
 
 class VoteNetwork:
-    def __init__(self, on_update: Callable[[Counter], None]) -> None:
+    def __init__(
+        self,
+        on_update: Callable[[Counter], None],
+        on_question_changed: Callable[[int], None] | None = None,
+        is_host: bool = False,
+    ) -> None:
         """
         on_update: 集計結果 Counter({1: 2, 3: 1, ...}) を受け取るコールバック。
+        on_question_changed: 問題番号が変わったとき (question_id) を受け取るコールバック。
+        is_host: True のときのみ問題番号の変更・送信が可能。
         """
         self._on_update = on_update
+        self._on_question_changed = on_question_changed
+        self._is_host = is_host
         self._votes: Counter = Counter()
+        self._current_question: int = 1
         self._lock = threading.Lock()
         self._local_ip: str = _get_local_ip()  # 自己送信パケット除外用
 
@@ -77,12 +87,48 @@ class VoteNetwork:
         送信と同時にローカルの _votes に加算する。
         _listen() 側では同じ IP からのパケットを除外することで二重加算を防ぐ。
         """
-        payload = json.dumps({"vote": choice}).encode()
+        with self._lock:
+            question_id = self._current_question
+        payload = json.dumps({"type": "vote", "vote": choice, "question_id": question_id}).encode()
         self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
         if choice in (1, 2, 3, 4):
             with self._lock:
                 self._votes[choice] += 1
-            self._on_update(Counter(self._votes))
+                current_votes = Counter(self._votes)
+            self._on_update(current_votes)
+
+    def send_question(self, question_id: int) -> None:
+        """問題番号をブロードキャストし、ローカルの投票をリセットする。ホストのみ送信可能。"""
+        if not self._is_host:
+            return
+        with self._lock:
+            self._current_question = question_id
+            self._votes.clear()
+        payload = json.dumps({"type": "question", "question_id": question_id}).encode()
+        self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
+        self._on_update(Counter())
+        if self._on_question_changed:
+            self._on_question_changed(question_id)
+
+    def shift_question(self, delta: int) -> int:
+        """問題番号を増減してブロードキャストし、新しい問題番号を返す。ホストのみ送信可能。"""
+        if not self._is_host:
+            with self._lock:
+                return self._current_question
+        with self._lock:
+            self._current_question = max(1, self._current_question + delta)
+            new_question = self._current_question
+            self._votes.clear()
+        payload = json.dumps({"type": "question", "question_id": new_question}).encode()
+        self._sock.sendto(payload, (BROADCAST_ADDR, BROADCAST_PORT))
+        self._on_update(Counter())
+        if self._on_question_changed:
+            self._on_question_changed(new_question)
+        return new_question
+
+    def get_current_question(self) -> int:
+        with self._lock:
+            return self._current_question
 
     def reset(self) -> None:
         with self._lock:
@@ -98,11 +144,27 @@ class VoteNetwork:
                 if os.environ.get("VOTE_DEBUG"):
                     print(f"[VoteNetwork] recv from {addr}: {data!r}", file=sys.stderr, flush=True)
                 payload = json.loads(data.decode())
-                choice = int(payload.get("vote", 0))
-                if choice in (1, 2, 3, 4):
+                msg_type = payload.get("type", "vote")
+
+                if msg_type == "question":
+                    question_id = int(payload.get("question_id", 1))
                     with self._lock:
+                        self._current_question = question_id
+                        self._votes.clear()
+                    self._on_update(Counter())
+                    if self._on_question_changed:
+                        self._on_question_changed(question_id)
+                else:  # "vote" またはフィールドなし（旧フォーマット互換）
+                    choice = int(payload.get("vote", 0))
+                    if choice not in (1, 2, 3, 4):
+                        continue
+                    raw_qid = payload.get("question_id")
+                    with self._lock:
+                        if raw_qid is not None and int(raw_qid) != self._current_question:
+                            continue  # 別の問題の票は無視
                         self._votes[choice] += 1
-                    self._on_update(Counter(self._votes))
+                        current_votes = Counter(self._votes)
+                    self._on_update(current_votes)
             except (socket.timeout, OSError):
                 pass
             except (json.JSONDecodeError, ValueError, KeyError):
