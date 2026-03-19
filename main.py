@@ -134,7 +134,10 @@ def main() -> None:
     network.start()
     audio_network: AudioVoteNetwork | None = None
     if flags["audio_vote_enabled"]:
-        audio_network = AudioVoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("audio", c)))
+        audio_network = AudioVoteNetwork(
+            on_update=lambda c: bridge.votes_updated.emit(("audio", c)),
+            on_question_changed=lambda q: bridge.question_received.emit(q),
+        )
         audio_network.start()
 
     # --- シグナル接続 ---
@@ -198,8 +201,8 @@ def main() -> None:
         question_selection_enabled = True
         if audio_network is not None:
             new_question = audio_network.shift_question(delta)
-            # UDP 側も同じ問題番号にブロードキャスト
-            network.send_question(new_question)
+            audio_network.send_question(new_question)   # 超音波でブロードキャスト
+            network.send_question(new_question)         # UDP でもブロードキャスト
         else:
             new_question = network.shift_question(delta)
         print(f"[Vote] 現在の問題番号: Q{new_question}")

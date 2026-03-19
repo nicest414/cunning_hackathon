@@ -130,6 +130,18 @@ def _parse_vote_payload(raw_text: str) -> tuple[int, int] | None:
         return None
 
 
+def _parse_question_payload(raw_text: str) -> int | None:
+    """復号した文字列から問題番号を取り出す。question メッセージでなければ None。"""
+    try:
+        payload = json.loads(raw_text)
+        if payload.get("type") != "question":
+            return None
+        question_no = int(payload.get("q", 0))
+        return question_no if question_no > 0 else None
+    except Exception:
+        return None
+
+
 def _ggwave_init() -> object:
     """利用中バックエンドに応じてデコーダを初期化する。"""
     if hasattr(ggwave, "init"):
@@ -212,8 +224,13 @@ def is_available() -> bool:
 class AudioVoteNetwork:
     """ggwave 音波による多数決送受信クラス。"""
 
-    def __init__(self, on_update: Callable[[Counter], None]) -> None:
+    def __init__(
+        self,
+        on_update: Callable[[Counter], None],
+        on_question_changed: Callable[[int], None] | None = None,
+    ) -> None:
         self._on_update = on_update
+        self._on_question_changed = on_question_changed
         self._lock = threading.Lock()
 
         # 問題番号ごとの票: { q: Counter({choice: count}) }
@@ -307,6 +324,42 @@ class AudioVoteNetwork:
             current_votes = Counter(self._votes_by_question.get(self._current_question, Counter()))
         self._on_update(current_votes)
 
+    def send_question(self, question_id: int) -> None:
+        """問題番号を音声ブロードキャストし、ローカル状態も更新する。"""
+        if not _AVAILABLE:
+            return
+        with self._lock:
+            self._current_question = question_id
+
+        payload_text = json.dumps({"type": "question", "q": question_id}, separators=(",", ":"))
+        try:
+            waveform = _ggwave_encode(payload_text, self._protocol_id)
+        except Exception as e:
+            logger.warning("send_question: encode 失敗: %s", e)
+            return
+
+        if waveform:
+            self._last_sent_at = time.monotonic()
+
+            def _play() -> None:
+                try:
+                    pa = pyaudio.PyAudio()
+                    tx_format, frame_bytes = _tx_format_and_frame_bytes()
+                    stream = pa.open(
+                        format=tx_format,
+                        channels=1,
+                        rate=int(_SAMPLE_RATE * _TX_RATE_MULTIPLIER),
+                        output=True,
+                    )
+                    stream.write(waveform, num_frames=len(waveform) // frame_bytes)
+                    stream.stop_stream()
+                    stream.close()
+                    pa.terminate()
+                except Exception as e:
+                    logger.warning("send_question: 再生失敗: %s", e)
+
+            threading.Thread(target=_play, daemon=True).start()
+
     def shift_question(self, delta: int) -> int:
         """現在の問題番号を増減し、現在問題の票を再通知する。"""
         if delta == 0:
@@ -380,23 +433,37 @@ class AudioVoteNetwork:
                 except Exception:
                     continue
 
-                parsed = _parse_vote_payload(text)
-                if not parsed:
-                    continue
-
                 now = time.monotonic()
                 if now - self._last_sent_at < _SELF_SUPPRESS_SEC:
+                    continue
+
+                # 問題変更メッセージを優先チェック
+                question_id = _parse_question_payload(text)
+                if question_id is not None:
+                    with self._lock:
+                        changed = self._current_question != question_id
+                        self._current_question = question_id
+                        current_votes = Counter(self._votes_by_question.get(question_id, Counter()))
+                    self._on_update(current_votes)
+                    if changed and self._on_question_changed:
+                        self._on_question_changed(question_id)
+                    continue
+
+                parsed = _parse_vote_payload(text)
+                if not parsed:
                     continue
 
                 question_no, choice = parsed
                 with self._lock:
                     votes = self._votes_by_question.setdefault(question_no, Counter())
                     votes[choice] += 1
-                    is_current = question_no == self._current_question
-                    current_votes = Counter(self._votes_by_question.get(self._current_question, Counter()))
-
-                if is_current:
-                    self._on_update(current_votes)
+                    # ホストの投票に乗った q で current_question を自動補正
+                    changed = self._current_question != question_no
+                    self._current_question = question_no
+                    current_votes = Counter(self._votes_by_question.get(question_no, Counter()))
+                self._on_update(current_votes)
+                if changed and self._on_question_changed:
+                    self._on_question_changed(question_no)
         finally:
             try:
                 stream.stop_stream()
