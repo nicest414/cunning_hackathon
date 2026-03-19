@@ -224,6 +224,40 @@ class TestKeyListener(unittest.TestCase):
         import time; time.sleep(0.05)
         on_question_shift.assert_called_once_with(-1)
 
+    def test_custom_hotkey_overrides_default_mapping(self):
+        """設定されたホットキーが既定値より優先される。"""
+        on_panic = MagicMock()
+        kl = self.kl_mod.KeyListener(
+            on_ai_answer=MagicMock(),
+            on_vote=MagicMock(),
+            on_panic=on_panic,
+            hotkeys={"panic": "mod+shift+z"},
+        )
+
+        mod = self.kl_mod._MOD_KEY
+        kl._pressed = {mod, self.Key.shift, self.KeyCode.from_char("z")}
+        kl._check_hotkeys()
+
+        import time; time.sleep(0.05)
+        on_panic.assert_called_once()
+
+    def test_invalid_hotkey_falls_back_to_default(self):
+        """不正な設定値は既定値へフォールバックする。"""
+        on_panic = MagicMock()
+        kl = self.kl_mod.KeyListener(
+            on_ai_answer=MagicMock(),
+            on_vote=MagicMock(),
+            on_panic=on_panic,
+            hotkeys={"panic": "mod+shift+escape"},
+        )
+
+        mod = self.kl_mod._MOD_KEY
+        kl._pressed = {mod, self.Key.shift, self.KeyCode.from_char("a")}
+        kl._check_hotkeys()
+
+        import time; time.sleep(0.05)
+        on_panic.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

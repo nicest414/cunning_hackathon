@@ -18,6 +18,14 @@ from PyQt6.QtCore import pyqtSignal, QObject, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from core import ai_client, capture, credentials
+from core.hotkey_config import (
+    get_hotkey_config_path,
+    humanize_hotkey,
+    load_flag_overrides,
+    load_hotkey_overrides,
+    resolve_flags,
+    resolve_hotkeys,
+)
 from core.network import VoteNetwork
 from core.audio_network import AudioVoteNetwork
 from core.stealth_notifier import create_notifier
@@ -103,6 +111,11 @@ def main() -> None:
 
     ai_client.init(api_key)
 
+    hotkey_overrides = load_hotkey_overrides()
+    hotkeys = resolve_hotkeys(hotkey_overrides)
+    flag_overrides = load_flag_overrides()
+    flags = resolve_flags(flag_overrides)
+
     _check_macos_accessibility()
 
     _notifier = create_notifier()
@@ -113,8 +126,10 @@ def main() -> None:
     bridge = _Bridge()
     network = VoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("udp", c)))
     network.start()
-    audio_network = AudioVoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("audio", c)))
-    audio_network.start()
+    audio_network: AudioVoteNetwork | None = None
+    if flags["audio_vote_enabled"]:
+        audio_network = AudioVoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("audio", c)))
+        audio_network.start()
 
     # --- シグナル接続 ---
     # 問題選択モードが一度でも有効になったかどうかを示すフラグ。
@@ -138,7 +153,6 @@ def main() -> None:
         t.start()
 
     bridge.ai_requested.connect(_do_ai_answer)
-    bridge.answer_ready.connect(overlay.show_answer)
 
     def _do_led_blink(answer: str) -> None:
         """AI回答がある場合のみLED点滅プロトコルを非同期実行する。"""
@@ -149,7 +163,8 @@ def main() -> None:
 
     def _do_vote(choice: int) -> None:
         network.send_vote(choice)
-        audio_network.send_vote(choice)
+        if audio_network is not None:
+            audio_network.send_vote(choice)
 
     bridge.vote_cast.connect(_do_vote)
 
@@ -174,6 +189,9 @@ def main() -> None:
 
     def _do_question_shift(delta: int) -> None:
         nonlocal question_selection_enabled
+        if audio_network is None:
+            print("[AudioVote] 超音波多数決は無効です。hotkeys.json の flags.audio_vote_enabled を true にしてください。")
+            return
         question_selection_enabled = True
         new_question = audio_network.shift_question(delta)
         print(f"[AudioVote] 現在の問題番号: {new_question}")
@@ -184,7 +202,8 @@ def main() -> None:
         overlay.hide_all()
         apology.apologize()
         network.reset()
-        audio_network.reset()
+        if audio_network is not None:
+            audio_network.reset()
 
     bridge.panic_requested.connect(_do_panic)
 
@@ -222,6 +241,7 @@ def main() -> None:
         on_quit=app.quit,
         on_copy_hijack=bridge.copy_hijack_requested.emit,
         on_question_shift=bridge.question_shift.emit,
+        hotkeys=hotkeys,
     )
     listener.start()
 
@@ -234,12 +254,20 @@ def main() -> None:
     _sigint_timer.start(200)
 
     print("カンニングアプリ 起動完了。")
-    print(f"  AI回答           : Cmd+Shift+Space  (Win/Linux: Ctrl+Shift+Space)")
-    print(f"  クリップボード置換: Cmd+Shift+C      (Win/Linux: Ctrl+Shift+C)")
-    print(f"  多数決           : Option+1〜4      (Win/Linux: Alt+1〜4)")
-    print(f"  問題番号変更     : Option+↑/↓       (Win/Linux: Alt+↑/↓)")
-    print(f"  緊急謝罪         : Cmd+Shift+A     (Win/Linux: Ctrl+Shift+A)")
-    print(f"  終了             : Cmd+Shift+X     (Win/Linux: Ctrl+Shift+X)")
+    print(f"  AI回答           : {humanize_hotkey(hotkeys['ai_answer'])}")
+    print(f"  クリップボード置換: {humanize_hotkey(hotkeys['copy_hijack'])}")
+    print(
+        f"  多数決           : "
+        f"{humanize_hotkey(hotkeys['vote_1'])}〜{humanize_hotkey(hotkeys['vote_4'])}"
+    )
+    print(
+        f"  問題番号変更     : "
+        f"{humanize_hotkey(hotkeys['question_up'])}/{humanize_hotkey(hotkeys['question_down'])}"
+    )
+    print(f"  緊急謝罪         : {humanize_hotkey(hotkeys['panic'])}")
+    print(f"  終了             : {humanize_hotkey(hotkeys['quit'])}")
+    print(f"  超音波多数決      : {'ON' if flags['audio_vote_enabled'] else 'OFF'}")
+    print(f"  キー設定ファイル : {get_hotkey_config_path()}")
 
     exit_code = app.exec()
     try:
@@ -251,7 +279,8 @@ def main() -> None:
     except Exception:
         pass
     try:
-        audio_network.stop()
+        if audio_network is not None:
+            audio_network.stop()
     except Exception:
         pass
     try:

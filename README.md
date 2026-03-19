@@ -28,7 +28,7 @@ UDPブロードキャストを使用したサーバーレス P2P 通信で、同
 全参加端末の回答をリアルタイム集計し、多数派の選択肢をオーバーレイに表示します。
 サーバー不要・設定不要。ルーターさえあれば即席の集合知が完成します。
 
-### 3. 証拠隠滅 & 謝罪機能 — `Cmd+Shift+Q` / `Ctrl+Shift+Q`
+### 3. 証拠隠滅 & 謝罪機能 — `Cmd+Shift+A` / `Ctrl+Shift+A`
 
 **バレそうになったとき専用の緊急脱出ボタン。**
 キーを押した瞬間にすべてのオーバーレイを消去し、画面中央に `assets/sorry.png` を全画面表示。
@@ -43,7 +43,7 @@ UDPブロードキャストを使用したサーバーレス P2P 通信で、同
 | 言語 | Python 3.x |
 | GUI / オーバーレイ | PyQt6（`Qt.WindowTransparentForInput` + `WA_TranslucentBackground`） |
 | 画面キャプチャ | mss |
-| キーボード監視 | keyboard |
+| キーボード監視 | pynput |
 | AI | Google GenAI SDK（Gemini 1.5 Flash） |
 | P2P 通信 | Python 標準 `socket`（UDP ブロードキャスト） |
 
@@ -80,8 +80,39 @@ cunning_hackathon/
 
 - Python 3.10 以上
 - [Google AI Studio](https://aistudio.google.com/) で発行した Gemini API キー
-- **macOS の場合**: アクセシビリティ権限（システム設定 > プライバシーとセキュリティ > アクセシビリティ）にターミナル / IDE を追加してください。`keyboard` ライブラリのグローバルフック使用に必要です。
-- **Linux の場合**: `keyboard` の使用には `sudo` が必要になる場合があります。
+- **macOS の場合**: アクセシビリティ権限（システム設定 > プライバシーとセキュリティ > アクセシビリティ）にターミナル / IDE を追加してください。`pynput` のグローバルフック使用に必要です。
+
+---
+
+## キーコンフィグ
+
+初回起動時にホットキー設定ファイルが自動生成されます。場所は起動ログに表示される `キー設定ファイル` の行で確認できます。
+
+```json
+{
+    "version": 1,
+    "hotkeys": {
+        "ai_answer": "mod+shift+space",
+        "copy_hijack": "mod+shift+c",
+        "panic": "mod+shift+a",
+        "quit": "mod+shift+x",
+        "vote_1": "alt+1",
+        "vote_2": "alt+2",
+        "vote_3": "alt+3",
+        "vote_4": "alt+4",
+        "question_up": "alt+up",
+        "question_down": "alt+down"
+    },
+    "flags": {
+        "audio_vote_enabled": true
+    }
+}
+```
+
+- `mod` は macOS では `Cmd`、Windows/Linux では `Ctrl` として扱われます。
+- 使えるメインキーは `a-z`, `0-9`, `space`, `up`, `down` です。
+- 不正な設定値は自動的に既定値へフォールバックされ、アプリは停止しません。
+- 超音波多数決を無効化したい場合は `flags.audio_vote_enabled` を `false` にしてください。
 
 ### 1. リポジトリのクローン
 

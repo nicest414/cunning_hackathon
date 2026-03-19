@@ -8,6 +8,8 @@ from typing import Callable
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
 
+from core.hotkey_config import DEFAULT_HOTKEYS, resolve_hotkeys
+
 # ビルド版 (console=False) でもエラーを確認できるようファイルにログを出力する
 # KL_DEBUG=1 環境変数を設定するとキー入力を含む DEBUG ログが有効になる
 _KL_DEBUG = os.environ.get("KL_DEBUG") == "1"
@@ -74,6 +76,7 @@ class KeyListener:
         on_quit: Callable[[], None] = lambda: None,
         on_copy_hijack: Callable[[], None] = lambda: None,
         on_question_shift: Callable[[int], None] = lambda _delta: None,
+        hotkeys: dict[str, str] | None = None,
     ) -> None:
         self._on_ai_answer = on_ai_answer
         self._on_vote = on_vote
@@ -84,6 +87,8 @@ class KeyListener:
 
         self._pressed: set = set()
         self._listener: keyboard.Listener | None = None
+
+        self._hotkeys = self._normalize_hotkeys(hotkeys)
 
     def start(self) -> None:
         """pynput リスナーをバックグラウンドスレッドで起動する。ウォッチドッグも起動。"""
@@ -272,41 +277,108 @@ class KeyListener:
         except Exception as e:
             print(f"[Key ERROR] {e}")
 
+    def _normalize_hotkeys(self, hotkeys: dict[str, str] | None) -> dict[str, tuple[set[str], str]]:
+        """設定値を内部判定しやすい形式に変換する。"""
+        normalized: dict[str, tuple[set[str], str]] = {}
+        resolved = resolve_hotkeys(hotkeys)
+
+        for action, default_combo in DEFAULT_HOTKEYS.items():
+            combo = resolved.get(action, default_combo)
+            try:
+                normalized[action] = self._parse_combo(combo)
+            except Exception:
+                # 不正な設定は既定値に戻して継続する
+                normalized[action] = self._parse_combo(default_combo)
+        return normalized
+
+    @staticmethod
+    def _parse_combo(combo: str) -> tuple[set[str], str]:
+        """ホットキー文字列を (修飾キー集合, メインキー) に分解する。"""
+        parts = [p.strip().lower() for p in combo.split("+") if p.strip()]
+        if not parts:
+            raise ValueError("empty combo")
+
+        modifiers = {"mod", "shift", "alt"}
+        key_tokens = {"space", "up", "down"}
+        parsed_modifiers: set[str] = set()
+        main_key = ""
+
+        for token in parts:
+            if token in modifiers:
+                parsed_modifiers.add(token)
+                continue
+            if main_key:
+                raise ValueError("multiple main keys")
+            main_key = token
+
+        if not main_key:
+            raise ValueError("main key missing")
+
+        if main_key in key_tokens or main_key.isdigit() or (len(main_key) == 1 and main_key.isalpha()):
+            return parsed_modifiers, main_key
+        raise ValueError(f"unsupported main key: {main_key}")
+
+    def _match_combo(self, action: str) -> bool:
+        """指定アクションのホットキーが押下中か判定する。"""
+        combo = self._hotkeys.get(action)
+        if not combo:
+            return False
+
+        modifiers, main = combo
+        required: list = []
+        if "mod" in modifiers:
+            required.append(_MOD_KEY)
+        if "shift" in modifiers:
+            required.append(Key.shift)
+        if "alt" in modifiers:
+            required.append(Key.alt)
+
+        if required and not self._has(*required):
+            return False
+
+        if main == "space":
+            return self._has(Key.space)
+        if main == "up":
+            return self._has(Key.up)
+        if main == "down":
+            return self._has(Key.down)
+        if main.isdigit():
+            return self._has_num(int(main))
+        if len(main) == 1 and main.isalpha():
+            return self._has_alpha(main)
+        return False
+
     def _check_hotkeys(self) -> None:
         try:
-            mod = _MOD_KEY
-            shift = Key.shift
-            alt = Key.alt  # macOS では option キーが alt として認識される
-
-            # Cmd/Ctrl + Shift + Space → AI回答
-            if self._has(mod, shift, Key.space):
+            # AI回答
+            if self._match_combo("ai_answer"):
                 self._pressed.clear()  # **全体をクリアして状態不整合を防ぐ**
                 threading.Thread(target=self._safe_call, args=(self._on_ai_answer,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + Shift + A → パニック
-            if self._has(mod, shift) and self._has_alpha("a"):
+            # パニック
+            if self._match_combo("panic"):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_panic,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + Shift + X → アプリ終了
-            if self._has(mod, shift) and self._has_alpha("x"):
+            # アプリ終了
+            if self._match_combo("quit"):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_quit,), daemon=True).start()
                 return
 
-            # Cmd/Ctrl + Shift + C → クリップボードAI置換
+            # クリップボードAI置換
             # Cmd+C（コピー）と分離することで OS との競合を完全に回避する。
             # 選択中のテキストを内部で Cmd/Ctrl+C シミュレーションにより取得する。
-            if self._has(mod, shift) and self._has_alpha("c"):
+            if self._match_combo("copy_hijack"):
                 self._pressed.clear()
                 threading.Thread(target=self._safe_call, args=(self._on_copy_hijack,), daemon=True).start()
                 return
 
-            # Alt/Option + 1〜4 → 多数決
+            # 多数決
             for i in range(1, 5):
-                if self._has(alt) and self._has_num(i):
+                if self._match_combo(f"vote_{i}"):
                     self._pressed.clear()
                     choice = i
                     threading.Thread(
@@ -314,8 +386,8 @@ class KeyListener:
                     ).start()
                     return
 
-            # Alt/Option + ↑/↓ → 問題番号の増減
-            if self._has(alt, Key.up):
+            # 問題番号の増減
+            if self._match_combo("question_up"):
                 self._pressed.clear()
                 threading.Thread(
                     target=self._safe_call,
@@ -323,7 +395,7 @@ class KeyListener:
                     daemon=True,
                 ).start()
                 return
-            if self._has(alt, Key.down):
+            if self._match_combo("question_down"):
                 self._pressed.clear()
                 threading.Thread(
                     target=self._safe_call,
