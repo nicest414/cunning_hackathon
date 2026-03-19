@@ -45,13 +45,16 @@ class VoteNetwork:
         self,
         on_update: Callable[[Counter], None],
         on_question_changed: Callable[[int], None] | None = None,
+        is_host: bool = False,
     ) -> None:
         """
         on_update: 集計結果 Counter({1: 2, 3: 1, ...}) を受け取るコールバック。
         on_question_changed: 問題番号が変わったとき (question_id) を受け取るコールバック。
+        is_host: True のときのみ問題番号の変更・送信が可能。
         """
         self._on_update = on_update
         self._on_question_changed = on_question_changed
+        self._is_host = is_host
         self._votes: Counter = Counter()
         self._current_question: int = 1
         self._lock = threading.Lock()
@@ -95,7 +98,9 @@ class VoteNetwork:
             self._on_update(current_votes)
 
     def send_question(self, question_id: int) -> None:
-        """問題番号をブロードキャストし、ローカルの投票をリセットする。"""
+        """問題番号をブロードキャストし、ローカルの投票をリセットする。ホストのみ送信可能。"""
+        if not self._is_host:
+            return
         with self._lock:
             self._current_question = question_id
             self._votes.clear()
@@ -106,7 +111,10 @@ class VoteNetwork:
             self._on_question_changed(question_id)
 
     def shift_question(self, delta: int) -> int:
-        """問題番号を増減してブロードキャストし、新しい問題番号を返す。"""
+        """問題番号を増減してブロードキャストし、新しい問題番号を返す。ホストのみ送信可能。"""
+        if not self._is_host:
+            with self._lock:
+                return self._current_question
         with self._lock:
             self._current_question = max(1, self._current_question + delta)
             new_question = self._current_question

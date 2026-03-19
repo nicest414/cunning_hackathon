@@ -1,3 +1,4 @@
+import argparse
 import os
 import signal
 import sys
@@ -90,6 +91,11 @@ class _Bridge(QObject):
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--host", action="store_true", help="ホストモードで起動（問題番号の変更・送信が可能）")
+    args, _ = parser.parse_known_args()
+    is_host: bool = args.host
+
     load_dotenv()  # .env を環境変数に反映（後方互換）
 
     # APIキー取得: keyring → 環境変数 の優先順位
@@ -130,6 +136,7 @@ def main() -> None:
     network = VoteNetwork(
         on_update=lambda c: bridge.votes_updated.emit(("udp", c)),
         on_question_changed=lambda q: bridge.question_received.emit(q),
+        is_host=is_host,
     )
     network.start()
     audio_network: AudioVoteNetwork | None = None
@@ -137,6 +144,7 @@ def main() -> None:
         audio_network = AudioVoteNetwork(
             on_update=lambda c: bridge.votes_updated.emit(("audio", c)),
             on_question_changed=lambda q: bridge.question_received.emit(q),
+            is_host=is_host,
         )
         audio_network.start()
 
@@ -198,10 +206,11 @@ def main() -> None:
 
     def _do_question_shift(delta: int) -> None:
         nonlocal question_selection_enabled
+        if not is_host:
+            return
         question_selection_enabled = True
         if audio_network is not None:
-            new_question = audio_network.shift_question(delta)
-            audio_network.send_question(new_question)   # 超音波でブロードキャスト
+            new_question = audio_network.shift_question(delta)  # ホストなら内部でトーン再生
             network.send_question(new_question)         # UDP でもブロードキャスト
         else:
             new_question = network.shift_question(delta)
@@ -283,6 +292,7 @@ def main() -> None:
     print(f"  緊急謝罪         : {humanize_hotkey(hotkeys['panic'])}")
     print(f"  終了             : {humanize_hotkey(hotkeys['quit'])}")
     print(f"  超音波多数決      : {'ON' if flags['audio_vote_enabled'] else 'OFF'}")
+    print(f"  起動モード        : {'ホスト（問題番号変更可）' if is_host else '参加者（問題番号変更不可）'}")
     print(f"  キー設定ファイル : {get_hotkey_config_path()}")
 
     exit_code = app.exec()
