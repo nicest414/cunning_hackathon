@@ -32,6 +32,7 @@ from core.stealth_notifier import create_notifier
 from ui.apology_window import ApologyWindow
 from ui.overlay_window import OverlayWindow
 from ui.setup_dialog import SetupDialog
+from ui.tray_icon import TrayIcon
 from utils.key_listener import KeyListener
 from utils.selection import get_selected_text
 
@@ -122,6 +123,7 @@ def main() -> None:
 
     overlay = OverlayWindow()
     apology = ApologyWindow()
+    tray = TrayIcon()
 
     bridge = _Bridge()
     network = VoteNetwork(on_update=lambda c: bridge.votes_updated.emit(("udp", c)))
@@ -180,9 +182,9 @@ def main() -> None:
             return
 
         try:
-            overlay.show_votes(votes)
+            tray.show_votes(votes)
         except Exception:
-            # オーバーレイ更新失敗時もステルス性を優先して黙殺する
+            # トレイ更新失敗時もステルス性を優先して黙殺する
             pass
 
     bridge.votes_updated.connect(_on_votes_updated)
@@ -194,6 +196,7 @@ def main() -> None:
             return
         question_selection_enabled = True
         new_question = audio_network.shift_question(delta)
+        tray.show_question(new_question)
         print(f"[AudioVote] 現在の問題番号: {new_question}")
 
     bridge.question_shift.connect(_do_question_shift)
