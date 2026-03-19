@@ -300,6 +300,7 @@ class AudioVoteNetwork:
 
                 now = time.monotonic()
                 if now - self._last_sent_at < _SELF_SUPPRESS_SEC:
+                    buffer = np.array([], dtype=np.int16)
                     continue
 
                 detected_freq = _detect_signal(window)
