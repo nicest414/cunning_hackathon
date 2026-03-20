@@ -1,6 +1,7 @@
 """Unit tests for utils/selection.py — subprocess と pynput はモック化する。"""
 import sys
 import types
+import subprocess
 import unittest
 from unittest.mock import MagicMock, patch, call
 
@@ -238,6 +239,26 @@ class TestGetSelectedTextWindows(unittest.TestCase):
 
         self.assertEqual(result, "")
         self.assertTrue(restore_called["value"], "クリップボード復元が呼ばれていない")
+
+    @patch("platform.system", return_value="Windows")
+    def test_continues_when_backup_clipboard_times_out(self, _mock_platform):
+        """初回の Get-Clipboard がタイムアウトしても選択取得を継続できる。"""
+        import utils.selection as sel
+
+        fake_keyboard = MagicMock()
+        mock_run = MagicMock(side_effect=[
+            subprocess.TimeoutExpired(cmd=["powershell"], timeout=5),  # 退避取得失敗
+            MagicMock(returncode=0),                                    # clip (クリア)
+            MagicMock(returncode=0, stdout="captured\n"),             # Get-Clipboard (取得)
+            MagicMock(returncode=0),                                    # clip (復元)
+        ])
+
+        with patch("subprocess.run", mock_run), \
+             patch("time.sleep"), \
+             patch("pynput.keyboard.Controller", return_value=fake_keyboard):
+            result = sel._get_selected_text_windows()
+
+        self.assertEqual(result, "captured")
 
 
 if __name__ == "__main__":

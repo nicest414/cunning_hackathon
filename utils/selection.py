@@ -14,6 +14,14 @@ _IS_MAC = platform.system() == "Darwin"
 _WINDOWS_PRE_COPY_DELAY_SEC = 0.12
 _WINDOWS_CLIPBOARD_SETTLE_SEC = 0.2
 _WINDOWS_COPY_RETRY_DELAYS_SEC = (0.12, 0.2, 0.35)
+_WINDOWS_GET_CLIPBOARD_TIMEOUT_SEC = 5
+_WINDOWS_GET_CLIPBOARD_COMMAND = [
+    "powershell",
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "Get-Clipboard -Raw",
+]
 
 
 def get_selected_text() -> str:
@@ -83,15 +91,27 @@ def _get_selected_text_windows() -> str:
     import time
     import subprocess
 
+    def _read_clipboard_text(timeout_sec: float = _WINDOWS_GET_CLIPBOARD_TIMEOUT_SEC) -> str:
+        """Windows クリップボードのテキストを安全に取得する。"""
+        try:
+            result = subprocess.run(
+                _WINDOWS_GET_CLIPBOARD_COMMAND,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+            )
+            if result.returncode != 0:
+                return ""
+            return result.stdout.rstrip("\r\n")
+        except Exception:
+            return ""
+
     try:
         from pynput.keyboard import Controller, Key
 
         # 現在のクリップボード内容を退避
-        result = subprocess.run(
-            ["powershell", "-command", "Get-Clipboard"],
-            capture_output=True, text=True, timeout=2,
-        )
-        original = result.stdout.rstrip("\n") if result.returncode == 0 else ""
+        # 退避取得に失敗しても選択取得処理は継続する。
+        original = _read_clipboard_text()
 
         # クリップボードを一時的にクリアして Ctrl+C を送信
         subprocess.run(["clip"], input="", text=True, timeout=1)
@@ -121,11 +141,7 @@ def _get_selected_text_windows() -> str:
                 # クリップボードへの書き込みを待つ（アプリ差による遅延を吸収）
                 time.sleep(delay_sec)
 
-                result = subprocess.run(
-                    ["powershell", "-command", "Get-Clipboard"],
-                    capture_output=True, text=True, timeout=2,
-                )
-                selected = result.stdout.rstrip("\r\n") if result.returncode == 0 else ""
+                selected = _read_clipboard_text()
                 if selected:
                     break
 
