@@ -15,13 +15,7 @@ _WINDOWS_PRE_COPY_DELAY_SEC = 0.12
 _WINDOWS_CLIPBOARD_SETTLE_SEC = 0.2
 _WINDOWS_COPY_RETRY_DELAYS_SEC = (0.12, 0.2, 0.35)
 _WINDOWS_GET_CLIPBOARD_TIMEOUT_SEC = 5
-_WINDOWS_GET_CLIPBOARD_COMMAND = [
-    "powershell",
-    "-NoProfile",
-    "-NonInteractive",
-    "-Command",
-    "Get-Clipboard -Raw",
-]
+_WINDOWS_GET_CLIPBOARD_COMMAND = ["powershell", "-command", "Get-Clipboard"]
 
 
 def get_selected_text() -> str:
